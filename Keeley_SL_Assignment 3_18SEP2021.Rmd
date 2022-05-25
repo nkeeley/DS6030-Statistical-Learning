@@ -1,0 +1,353 @@
+---
+title: "Homework #3: Penalized Regression" 
+author: "**Nicholas Keeley**"
+date: "Due: Tue Sept 21 | 3:25pm"
+output: R6030::homework
+editor_options: 
+  chunk_output_type: console
+---
+
+**DS 6030 | Fall 2021 | University of Virginia**
+
+------------------------------------------------------------------------
+
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+# options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+NOTE TO GRADER:
+
+I understood all concepts before moving forward with mimicking code from the lectures and collaborators. I collaborated with Geoff Hansen and Pat Corbett, who showed me their code at key impasse points and talked me through certain theoretical obstacles.
+
+# Required R packages and Directories
+
+::: {.solution}
+```{r packages, message=FALSE, warning=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data/' # data directory
+library(mlbench)
+library(glmnet)
+library(R6030)     # functions for DS-6030
+library(tidyverse) # functions for data manipulation   
+```
+:::
+
+
+# Problem 1: Optimal Tuning Parameters
+
+In cross-validation, we discussed choosing the tuning parameter values that minimized the cross-validation error. Another approach, called the "one-standard error" rule [ISL pg 214, ESL pg 61], uses the values corresponding to the least complex model whose cv error is within one standard error of the best model. The goal of this assignment is to compare these two rules.
+
+Use simulated data from `mlbench.friedman1(n, sd=2)` in the `mlbench` R package to fit *lasso models*. The tuning parameter $\lambda$ (corresponding to the penalty on the coefficient magnitude) is the one we will focus one. Generate training data, use k-fold cross-validation to get $\lambda_{\rm min}$ and $\lambda_{\rm 1SE}$, generate test data, make predictions for the test data, and compare performance of the two rules under a squared error loss using a hypothesis test.  
+
+
+Choose reasonable values for:
+
+- Number of cv folds ($K$) 
+    - Note: you are free to use repeated CV, repeated hold-outs, or bootstrapping instead of plain cross-validation; just be sure to describe what do did so it will be easier to follow.
+- Number of training and test observations
+- Number of simulations
+- If everyone uses different values, we will be able to see how the results change over the different settings.
+- Don't forget to make your results reproducible (e.g., set seed)
+
+This pseudo code will get you started:
+```yaml
+library(mlbench)
+library(glmnet)
+
+#-- Settings
+n.train =        # number of training obs
+n.test =         # number of test obs
+K =              # number of CV folds
+alpha =          # glmnet tuning alpha (1 = lasso, 0 = ridge)
+M =              # number of simulations
+
+#-- Data Generating Function
+getData <- function(n) mlbench.friedman1(n, sd=2) # data generating function
+
+#-- Simulations
+# Set Seed Here
+
+for(m in 1:M) {
+
+# 1. Generate Training Data
+# 2. Build Training Models using cross-validation, e.g., cv.glmnet()
+# 3. get lambda that minimizes cv error and 1 SE rule
+# 4. Generate Test Data
+# 5. Predict y values for test data (for each model: min, 1SE)
+# 6. Evaluate predictions
+
+}
+
+#-- Compare
+# compare performance of the approaches / Statistical Test
+```
+
+## a. Code for the simulation and performance results
+
+::: {.solution}
+
+```{r, echo=FALSE, results="hide"}
+
+##-- Setup
+
+n.train = 100       # number of training obs
+n.test = 5000       # number of test obs
+K = 10         # number of CV folds
+alpha = 1         # glmnet tuning alpha (1 = lasso, 0 = ridge)
+M = 10         # number of simulations
+
+
+##-- Data Generating Function
+
+getData <- function(n) mlbench.friedman1(n, sd=2) # data generating function
+
+```
+
+```{r echo=TRUE, results="markup"}
+
+set.seed(2021)
+eval=tibble(mse.min=NA,mse.1se=NA)
+
+
+for(i in 1:M){
+  
+  # 1. Generate Training Data
+  
+  df.train=getData(n.train)
+  
+  # 2. Build Training Models using cross-validation, e.g., cv.glmnet()
+  
+  cv.lasso=cv.glmnet(df.train$x,df.train$y, type.measure = "mse", alpha=alpha, nfolds=K) # Why does it have 62 rows....
+  
+  # 3. get lambda that minimizes cv error and 1 SE rule
+  
+  train.lambda.min=cv.lasso$lambda.min
+  train.lambda.1se=cv.lasso$lambda.1se
+  
+  # 4. Generate Test Data
+  
+  df.test=getData(n.test)
+  
+  # 5. Predict y values for test data (for each model: min, 1SE)
+  
+  yhat.min = predict(cv.lasso, df.test$x, s = "lambda.min") 
+  mse.min=mean((df.test$y - yhat.min)^2)
+  beta.min = coef(cv.lasso, s="lambda.min")
+  
+  yhat.1se = predict(cv.lasso, df.test$x, s = "lambda.1se") 
+  mse.1se=mean((df.test$y - yhat.1se)^2)
+  beta.1se = coef(cv.lasso, s="lambda.1se")
+  
+  ## Read into a dataframe
+  
+  temp=tibble(mse.min=mse.min, mse.1se=mse.1se)
+  temp
+  eval=rbind(eval,temp)
+}
+
+eval=eval[-1,]
+eval
+
+## Add lambdas used if time
+```
+
+:::
+
+
+## b. Description and results of a hypothesis test comparing $\lambda_{\rm min}$ and $\lambda_{\rm 1SE}$.
+
+::: {.solution}
+
+In this hypothesis test, we were conducting a paired t-test on the null hypothesis that the difference in means between the MSEs for tuning parameters $\lambda_{\rm min}$ and $\lambda_{\rm 1SE}$ were 0 across M simulations.
+
+The results suggest that the estimated difference in means moving from $\lambda_{\rm min}$ to $\lambda_{\rm 1SE}$ was -1.275, which is statistically significant below the .01% level. This suggests that $\lambda_{\rm min}$ is a more reliable parameter for accurately modeling this data.
+
+```{r}
+
+# 6. Evaluate predictions
+results=t.test(eval$mse.min, eval$mse.1se, paired=TRUE, alternative="two.sided")
+broom::tidy(results)
+results
+
+```
+
+
+:::
+
+# Problem 2 Prediction Contest: Real Estate Pricing
+
+This problem uses the [realestate-train](`r file.path(data.dir, 'realestate-train.csv')`) and [realestate-test](`r file.path(data.dir, 'realestate-test.csv')`) (click on links for data). 
+
+The goal of this contest is to predict sale price (in thousands) (`price` column) using an *elastic net* model. Evaluation of the test data will be based on the root mean squared error ${\rm RMSE}= \sqrt{\frac{1}{m}\sum_i (y_i - \hat{y}_i)^2}$ for the $m$ test set observations. 
+
+
+## a. Load the data and create necessary data structures for running *elastic net*.
+- You are free to use any data transformation or feature engineering
+- Note: there are some categorical predictors so at the least you will have to convert those to something numeric (e.g., one-hot or dummy coding). 
+
+::: {.solution}
+
+```{r}
+
+set.seed(2021)
+
+## Load data... Want Lasso to remove pool
+
+df.train=read_csv("realestate-train.csv")
+df.test=read_csv("realestate-test.csv")
+n.train=length(df.train$price)
+n.train
+h=sample(1:n.train,(.1*n.train))
+df.holdout=df.train[h,]
+df.train=slice(df.train,-h)
+
+## Clean
+
+df.train$train=1
+df.train$log_SqFeet=log(df.train$SqFeet) # Based on cone shaped funnel of data
+
+df.test$log_SqFeet=log(df.test$SqFeet)
+
+df.holdout$train=0
+df.holdout$log_SqFeet=log(df.holdout$SqFeet)
+#df.total=rbind(df.train, df.test)
+
+## Adjust temporary test set
+
+## Create matrices
+M=glmnet::makeX(train=df.train %>% filter(train==1) %>% select(-price,-train),
+                test=df.holdout %>% filter(train==0)%>% select(-price,-train))
+
+X.train = M$x
+Y.train = df.train %>% filter(train==1) %>% pull(price)
+
+X.test = M$xtest
+Y.test = df.holdout %>% filter(train==0) %>% pull(price)
+
+
+## Categoricals to change: CentralAir (Y,N), BldgType ("1Fam"   "2fmCon" "Duplex" "TwnhsE" "Twnhs" ),
+## HouseStyle ("2Story" "1.5Fin" "1Story" "1.5Unf" "SLvl"   "2.5Unf" "2.5Fin" "SFoyer")
+
+
+```
+
+
+:::
+
+
+## b. Use an *elastic net* model to predict the `price` of the test data.  
+- You are free to use any data transformation or feature engineering
+- You are free to use any tuning parameters
+- Report the $\alpha$ and $\lambda$ parameters you used to make your final predictions.
+- Describe how you choose those tuning parameters
+
+::: {.solution}
+
+After conducting cross-fold analysis on my training set and holdout set, I decided that my model tuning parameters would be alpha = 0.5, and lambda would be 1.62 (using the lambda.min method). These resulted in the lowest RMSE across combinations of alpha and lambda.
+
+```{r}
+
+set.seed(2021)
+## Cross fold validation
+
+K = 10         # number of CV folds
+a = 0 # set alpha for elastic net # glmnet tuning alpha (1 = lasso, 0 = ridge)
+M = 1     # number of simulations
+
+## Alpha sequence
+
+alpha_seq=seq(0,1,.1)
+length(alpha_seq) # 10
+
+result=tibble()
+
+
+for(alpha_seq in alpha_seq){
+  
+  ## Fit model for this row
+    
+  fit.enet = cv.glmnet(X.train, Y.train, alpha=alpha_seq, nfolds=K, relax = TRUE) 
+    
+  ## Lambda min parameter collection
+    
+  yhat.enet = predict(fit.enet, newx = X.test, s="lambda.min") # List of predictions use lamndaMin 
+  train.lambda.min=fit.enet$lambda.min
+  rmse.lambda.min=sqrt(mean((Y.test-yhat.enet)^2))
+
+  ## Lambda 1se parameter collection
+    
+  yhat.enet = predict(fit.enet, newx = X.test, s="lambda.1se") # List of predictions use lamndaMin 
+  train.lambda.1se=fit.enet$lambda.1se
+  rmse.lambda.1se=sqrt(mean((Y.test-yhat.enet)^2))
+  
+  ## Bind
+  
+  row=tibble(alpha=c(alpha_seq),
+             lambda_min=c(train.lambda.min),
+             rmse_min=c(rmse.lambda.min),
+             lambda_1se=c(train.lambda.1se),
+             rmse_1se=c(rmse.lambda.1se))
+  result=rbind(result, row)
+}
+
+
+## Find the optimal combination row
+
+result_min=result[(result$rmse_min==min(result$rmse_min)),]
+result_min
+result_1se=result[(result$rmse_1se==min(result$rmse_1se)),]
+result_1se
+
+report =tibble()
+if(result_min$rmse_min<result_1se$rmse_1se) report=result_min else report=result_1se
+report
+
+alpha_final=report[1]
+alpha_final
+
+
+```
+
+:::
+
+## c. Submit a .csv file (ensure comma separated format) named `lastname_firstname.csv` that includes the column named *yhat* that is your estimates. We will use automated evaluation, so the format must be exact.  
+- You will receive credit for a proper submission; the top five scores will receive 2 bonus points.     
+    
+::: {.solution}
+
+```{r}
+## Set new test matrix
+
+M=glmnet::makeX(train=df.train %>% filter(train==1) %>% select(-price,-train),
+                test=df.test)
+
+X.train = M$x
+Y.train = df.train %>% filter(train==1) %>% pull(price)
+
+X.test = M$xtest
+
+## Run model on the overall test set
+
+fit.enet = cv.glmnet(X.train, Y.train, alpha=alpha_final, nfolds=K, relax = TRUE) 
+y= predict(fit.enet, newx = X.test, s="lambda.min")
+submission=tibble(yhat=c(y))
+
+
+## Save estimates as CSV
+
+write.csv(submission,"/Users/nkeeley/Dropbox/SY_Q1/Data Mining/keeley_nicholas.csv", row.names = TRUE)
+
+```
+
+
+
+:::
+
+## d. Report the anticipated performance of your method in terms of RMSE. We will see how close your performance assessment matches the actual value. 
+
+::: {.solution}
+
+From past exercises, lambda min seems to perform better than the 1se alternative if the MSE varies highly between the two. Alpha of 0.5 seems to make more sense to me because I would like to see some variable selection (e.g. trending LASSO) to remove variable coefficients likely to be closer to 0, such as PoolArea (which only has one or two inputs other than 0).
+
+
+:::   
