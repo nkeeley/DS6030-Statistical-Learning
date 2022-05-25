@@ -1,0 +1,459 @@
+---
+title: "Homework #2: Resampling" 
+author: "**Nicholas Keeley**"
+date: "Due: Tue Sept 14 | 3:25pm"
+output: R6030::homework
+---
+
+**DS 6030 | Fall 2021 | University of Virginia**
+
+NOTE: Patrick Corbett helped talk me through the theory, and subsequently the code for the CI problem. Despite following the same code, I was not able to produce the desired result. I've left the code as is to reflect my attempt, and am hoping to receive partial credit for attempting. I also had serious problems with DPLYR for some reason, so this may have been part of the issue.
+
+------------------------------------------------------------------------
+
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+# options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+
+# Required R packages and Directories
+
+::: {.solution}
+```{r packages, echo=TRUE, message=FALSE, warning=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data/' # data directory
+library("R6030")     # functions for DS-6030
+library("tidyverse") # functions for data manipulation  
+library("dplyr")
+library("ISLR")
+library("moderndive")
+library("rpart")
+library("rpart.plot")
+library("randomForest")
+library("boot")
+library("caret")
+library("broom")
+library("glmnet")
+library("FNN")
+library("modelr")
+library("tidymodels")
+library("e1071")
+library("MASS")
+library("fitdistrplus")
+library("ks")
+library("mclust")
+library("mixtools")
+library("gbm")
+library("xgboost")
+library("arules")
+library("igraph")
+```
+:::
+
+# Problem 1: Bootstrapping 
+
+Bootstrap resampling can be used to quantify the uncertainty in a fitted curve. 
+
+
+
+## a. Create a set of functions to generate data from the following distributions:
+\begin{align*}
+X &\sim \mathcal{U}(0, 2) \qquad \text{Uniform in $[0,2]$}\\
+Y &= 1 + 2x + 5\sin(5x) + \epsilon \\
+\epsilon &\sim \mathcal{N}(0,\, \sigma=2.5)
+\end{align*}
+
+::: {.solution}
+
+```{r echo=FALSE, results="hide"}
+sim_x=function(n) runif(n,0,2)
+sim_true=function(x) 1+2*x+5*sin(5*x)
+sim_y=function(x){
+  n=length(x)
+  epsilon= rnorm(n,0, 2.5)
+  sim_true(x)+epsilon
+}
+
+
+```
+
+
+
+:::
+
+
+## b. Simulate $n=100$ realizations from these distributions. Produce a scatterplot and draw the true regression line $f(x) = E[Y \mid X=x]$. Use `set.seed(211)` prior to generating the data.
+
+::: {.solution}
+
+```{r echo=FALSE, results="hide"}
+## Simulate 100 observations
+
+set.seed(211)
+x=sim_x(100)
+y=sim_y(x)
+df2=tibble(x,y)
+
+## Data set
+
+models=tibble(actual=sim_true(x))
+
+```
+```{r}
+
+## Scatterplot with true population in black.
+
+ggplot(aes(x, y), data=tibble(x,y)) + 
+geom_point() +
+geom_function(fun=sim_true,color="black")
+
+
+
+```
+
+
+:::
+
+
+
+## c. Fit a 5th degree polynomial. Produce a scatterplot and draw the *estimated* regression curve.
+
+::: {.solution}
+
+```{r}
+
+## Sequence of x's to predict along
+
+xseq=seq(0,2,length=100)
+models$xseq=xseq
+
+## Fifth degree polynomial
+
+m1=lm(y~poly(x,5))
+y_hat1=predict(m1,newdata=tibble(xseq))
+models$fifth=y_hat1
+ 
+```
+
+```{r}
+
+## Scatterplot with true population in black and estimated model in blue
+
+ggplot(aes(x, y), data=models) + 
+geom_point() +
+geom_function(fun=sim_true,color="black") +
+geom_line(aes(y=models$fifth),color = "blue")
+
+
+```
+
+
+:::
+
+
+## d. Draw 200 bootstrap samples, fit a 5th degree polynomial to each bootstrap sample, and make predictions at `eval.pts = seq(0, 2, length=100)`
+- Set the seed (use `set.seed(212)`) so your results are reproducible.
+- Produce a scatterplot and add the 200 bootstrap curves
+    
+::: {.solution}
+
+```{r echo=FALSE, results="hide"}
+
+## Setup
+
+set.seed(212)
+eval.pts=seq(0,2,length=100) # x values along which to predict
+df=tibble(x=x,
+          y=y)# initialize training model with x values. will get reset each loo[p]
+n=length(df$x)
+new=matrix(NA,n,200) # Placeholder for empty boot straps
+M=200 # number of bootstrap iterations to run
+beta=matrix(NA,M,2) # initialize test statistic matrix
+
+
+## Single boot strap in a loop
+
+for(i in 1:M){
+  ind=sample(n,replace=TRUE)
+  df.boot=df[ind,]
+  m.boot=lm(y~poly(x,5),data=df.boot)
+  m.pred=predict(m.boot, newdata=tibble(eval.pts))
+  new[,i]=m.pred
+
+}
+
+df=cbind(df,new) # Combine placeholder matrix with original data frame
+df$new_x=eval.pts
+df_long=pivot_longer(df,cols=!x & !new_x & !y, names_to="model",values_to="prediction")
+df_long
+```
+
+```{r}
+
+## Scatterplot with true population in black and estimated model in blue
+
+ggplot(aes(x, y), data=df_long) + 
+geom_point() + 
+geom_function(fun=sim_true,color="black") +
+geom_line(data=df_long, color="red", alpha=0.4, aes(y=prediction,group=model))
+
+```
+
+
+:::
+
+    
+## e. Calculate the pointwise 95% confidence intervals from the bootstrap samples. That is, for each $x \in {\rm eval.pts}$, calculate the upper and lower limits such that only 5% of the curves fall outside the interval at $x$. 
+- Remake the plot from part *c*, but add the upper and lower boundaries from the 95% confidence intervals. 
+
+::: {.solution}
+
+NOTE TO GRADER: I could not get this code to run, but consulted with other students who had very similar code. The idea is correct, but something didn't go right with the mapping. Credit for help: Patrick Corbett
+
+```{r}
+
+ggplot(aes(x, y), data=df_long) + 
+  geom_point() +
+  geom_smooth(method="lm", formula = "y~poly(x,5)") +
+  geom_pointrange(df_long %>% group_by(x) %>% summarize(sd=sd(y), mean=mean(y)), mapping = aes(ymin= mean- 2*sd, ymax = mean + 2*sd))
+```
+
+
+:::
+
+
+
+
+# Problem 2: V-Fold cross-validation with $k$ nearest neighbors
+
+Run 10-fold cross-validation on the data generated in part 1b to select the optimal $k$ in a k-nearest neighbor (kNN) model. Then evaluate how well cross-validation performed by evaluating the performance on a large test set. The steps below will guide you.
+
+
+## a. Use $10$-fold cross-validation to find the value of $k$ (i.e., neighborhood size) that provides the smallest cross-validated MSE using a kNN model. 
+
+- Search over $k=3,4,\ldots, 50$.
+- Use `set.seed(221)` prior to generating the folds to ensure the results are replicable. 
+- Show the following:
+    - the optimal $k$ (as determined by cross-validation)
+    - the corresponding estimated MSE
+    - produce a plot with $k$ on the x-axis and the estimated MSE on the y-axis (optional: add 1-standard error bars). 
+- Notation: *v*-fold cross-validation; *k*-nearest neighbor. Don't get yourself confused.
+
+::: {.solution}
+
+```{r}
+
+## Create KNN model for k=3
+
+#knn.3 = knn.reg(df2$x, test=tibble(eval.pts), y=df2$y,k=3)
+
+#mse=mean((df2$y-knn.3$pred)^2)
+
+model_result=function(data_fit, data_eval, k){
+  result = knn.reg(dplyr::select(data_fit,x), test=dplyr::select(data_eval,x), y=data_fit$y, k=k)
+}
+
+
+## Set up folds
+df2=tibble(df2)
+n=nrow(df2)
+n.folds=10
+set.seed(221)
+folds=sample(rep(1:n.folds,length=n))
+
+## Loop for each k attempted
+
+RESULTS = matrix(NA,10,50)
+#- Iterate over folds 
+
+## For a given k (# of neighbors), conducting 10 fold validation
+
+#-- Set training/val data
+for(k in 3:50){
+  for(j in 1:n.folds){
+    val = which(folds == j) # indices of holdout/validation data 
+    train = which(folds != j) # indices of fitting/training data 
+    n.val = length(val) # number of observations in validation
+    #- fit and evaluate models
+    results = model_result(
+            data_fit = dplyr::slice(df2, train),
+            data_eval = dplyr::slice(df2, val),
+            k=k)
+    temp_preds=results$pred
+    temp_valset=dplyr::slice(df2, val)
+    results=tibble(prediction = temp_preds,
+                   actual = temp_valset$y)
+    mse = mean((results$actual-results$prediction)^2) ## MSE for this validation fold
+    RESULTS[j,k]=mse # Save into results table
+  }
+}
+
+## Now find the MSE for each k and format table
+
+RESULTS=RESULTS[,3:50]
+names=c(seq(3,50))
+colnames(RESULTS)=names
+RESULTS_2=matrix(NA,1,48)
+colnames(RESULTS_2)=names
+
+for(i in 1:48){
+  RESULTS_2[i]=mean(RESULTS[,i])
+}
+
+RESULTS_2=rbind(RESULTS_2,names)
+RESULTS_2=as_tibble(RESULTS_2)
+
+RESULTS_long=pivot_longer(RESULTS_2,cols=everything(), names_to="k",values_to="mse")
+RESULTS_long=RESULTS_long[1:48,]
+RESULTS_long$k=as.numeric(RESULTS_long$k)
+RESULTS_long %>% arrange(desc(as.numeric(RESULTS_long$k)))
+```
+
+```{r}
+
+ggplot(aes(k, mse), data=RESULTS_long) + 
+geom_line()
+
+```
+
+
+```{r}
+## Display minimum true MSE
+
+temp=group_by(RESULTS_long, k)
+temp
+```
+
+
+:::
+
+
+## b. The $k$ (number of neighbors) in a kNN model determines the effective degrees of freedom *edf*. What is the optimal *edf*? Be sure to use the correct sample size when making this calculation. Produce a plot similar to that from part *a*, but use *edf* (effective degrees of freedom) on the x-axis. 
+
+::: {.solution}
+
+When EDF is 12.5 (k=8), the true (training) MSE is lowest (5.937). However, we care about the test MSE, so I would prefer to run these trained models on a larger test set before finalizing my choice of k.
+
+```{r}
+
+## Add effective degrees of freedom
+
+n=100
+RESULTS_long$edf=n/RESULTS_long$k
+temp=group_by(RESULTS_long, k)
+temp
+
+
+```
+
+
+```{r}
+
+## Plot edf vs. mse
+
+ggplot(aes(edf, mse), data=RESULTS_long) + 
+geom_line()
+```
+
+:::
+
+
+
+## c. After running cross-validation, a final model fit from *all* of the training data needs to be produced to make predictions. What value of $k$ would you choose? Why? 
+
+::: {.solution}
+
+I want to choose the value of k for which TEST MSE is minimized, rather than TRAIN MSE. If we simply select the k for which TRAIN MSE is minimized, then we might fall prey to overfitting. TEST MSE is our chief concern when we want to make predictions.
+
+:::
+
+
+## d. Now we will see how well cross-validation performed. Simulate a test data set of $50000$ observations from the same distributions. Use `set.seed(223)` prior to generating the test data. 
+- Fit a set of kNN models, using the full training data, and calculate the mean squared error (MSE) on the test data for each model. Use the same $k$ values in *a*. 
+- Report the optimal $k$, the corresponding *edf*, and MSE based on the test set. 
+
+::: {.solution}
+
+The optimal test MSE is 7.109, for which k is 13 and edf is 3846.
+```{r echo=FALSE, results="hide"}
+
+## Setup test data
+
+set.seed(223)
+x=sim_x(50000)
+y=sim_y(x)
+test_d=tibble(x,y)
+n=nrow(train_d)
+
+## Output matrix with k labels
+
+RESULTS_d = matrix(NA,1,50)
+names=c(seq(1:50))
+RESULTS_d=rbind(RESULTS_d, names)
+
+## Fit k (3:50) models using whole original training data, then test on whole new test set. Save MSE for each k model and store in RESULTS_d.
+
+for(k in 3:50){
+    results = model_result(
+            data_fit = df2,
+            data_eval = test_d,
+            k=k)
+    temp_preds=results$pred
+    results=tibble(prediction = temp_preds,
+                   actual = test_d$y)
+    mse = mean((results$actual-results$prediction)^2) ## MSE for this validation fold
+    RESULTS_d[1,k]=mse # Save into results table
+}
+
+
+## Now clean results
+
+RESULTS_d=RESULTS_d[,3:50]
+RESULTS_d=as_tibble(RESULTS_d)
+RESULTS_d=pivot_longer(RESULTS_d,cols=everything(), names_to="v",values_to="mse")
+RESULTS_d=RESULTS_d[1:48,]
+k=c(seq(3,50))
+RESULTS_d=cbind(RESULTS_d, k)
+RESULTS_d$edf=nrow(test_d)/k
+
+```
+```{r}
+RESULTS_d
+```
+
+:::
+
+
+## e. Plot both the cross-validation estimated and (true) error calculated from the test data on the same plot. See Figure 5.6 in ISL (pg 182) as a guide. 
+- Produce two plots: one with $k$ on the x-axis and one with *edf* on the x-axis.
+- Each plot should have two lines: one from part *a* and one from part *d* 
+    
+::: {.solution}
+
+```{r}
+
+## Plot k vs. mse
+
+ggplot(aes(k, mse), data=RESULTS_d) + 
+geom_line(data=RESULTS_d, color="blue") +
+  geom_line(data=RESULTS_long, color="black") 
+
+```
+```{r}
+
+## Plot edf vs. mse
+
+ggplot(aes(edf, mse), data=RESULTS_long) + 
+  geom_line(data=RESULTS_d, color="blue") +
+  geom_line(data=RESULTS_long, color="black")
+
+```
+:::
+    
+    
+## f. Based on the plots from *e*, does it appear that cross-validation worked as intended? How sensitive is the choice of $k$ on the resulting test MSE?      
+
+::: {.solution}
+It appears the cross-validation worked as intended, in the sense that we were able to generally gauge an accurate prediction relying exclusively on our training data. Although the optimal k was slightly different for our new test data, the k vs. MSE curve was very similar for both the cross-validation data and the new test set predictions. MSE is incredibly sensitive to k at values below 10. This is reflected starkly by the edf graphs as well.
+:::
+
