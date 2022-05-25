@@ -1,0 +1,504 @@
+---
+title: "Exam II"
+author: "**Nicholas Keeley**"
+date: "Due: Tues Dec 14 | 12:00pm (noon)"
+output: R6030::homework
+---
+
+NOTE TO GRADER: My references are listed below the prompt for each individual problem. For some reason, I ran into a masking issue in problem 2.b., and the published HTML says that certain values are not computed. The RMD file does accurately calculate these values, and I printed the results.
+
+**DS 6030 | Fall 2021 | University of Virginia**
+
+*******************************************
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+
+::: {style="background-color:lightgrey; display: block; border-color: black; padding:1em"}
+
+- You may **not** discuss this exam with anyone else (besides teaching staff). All work must be done independently. You may consult textbooks, online material, etc. but any outside resource must be cited.
+    - Add an informal reference (e.g., url, book title) to any source consulted for each problem. 
+    - You may reuse code from my class materials/homework solutions, just make a note that you did so. 
+
+- Unless otherwise noted, all referenced datasets will be found at directory `https://github.com/mdporter/DS6030/tree/main/data`. In R, the path to these files can be obtained by
+```{r, eval=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data'
+file.path(data.dir, "filename.ext")
+```
+:::
+
+
+## Required R packages and Directories {-}
+
+::: {.solution}
+```{r packages, message=FALSE, warning=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data/' # data directory
+library(R6030)     # functions for DS-6030
+library(arules)    # functions for Association Analysis
+library(igraph)    # functions for network analysis
+library(tidyverse) # functions for data manipulation 
+library(mclust)
+```
+:::
+
+
+
+# Problem 1 (15 pts): A Market Basket of Marvel heroes
+
+References: I utilized HW10 code, HW9 code, the node-predict.R code, the instacart.R code, and the Association Analysis class notes and code.
+
+In HW 10.1, we analyzed the Marvel Universe using networks. This problem will use concepts from Association Analysis to explore the data. 
+Use the dataset `marvel_association.csv`, which gives the heroes that appeared in each comic, to answer the following questions. Treat the heroes as the *items* and comics as the *transactions*.
+
+
+## a. Provide the following descriptive analysis of the data
+
+- the number of items (heroes)
+- number of transactions (comics)
+- a visual representation of the distribution of *the number of items per transaction*. 
+
+::: {.solution}
+
+```{r}
+
+## Read in data
+
+df1=read_csv("https://raw.githubusercontent.com/mdporter/DS6030/main/data/marvel_association.csv")
+n_hero=length(unique(df1$hero))
+n_comic=length(unique(df1$comic))
+
+## Group by and make 1:1 for comics
+
+paste("Number of items (distinct heros): ", n_hero)
+paste("Number of transactions (distinct comics):", n_comic)
+
+```
+```{r}
+
+## Create transaction list
+
+tList = split(df1$hero, df1$comic) 
+trans=as(tList,"transactions")
+
+## Item freuency
+
+itemFreq = dplyr::count(df1, hero, sort=TRUE) %>% mutate(support=n/NT)
+#transFreq = dplyr::count(df1, comic, sort=TRUE) %>% mutate(support=n/NT)
+
+## Distribution
+
+dplyr::count(df1, comic) %>% 
+  ggplot(aes(n)) + geom_bar() + xlab("Size of Transaction (# of Items)") + ylab("Number of Transactions")
+
+```
+
+
+:::
+
+
+## b. What is the *lift* of the itemset: {CAPTAIN AMERICA, SPIDER-MAN}? What does the lift imply about the association of CAPTAIN AMERICA and SPIDER-MAN? 
+
+::: {.solution}
+
+The lift of the itemset is 0.848. Because this ratio is less than 1, and lift is a ratio of joint probability to individual probabilities of the two items, this lift result suggests that we see Captain America and Spider-Man together in comic books less than we would have expected (given their relative presence in comic books in general). This makes sense from an anecdotal standpoint - I've never seen them in the same comic book...
+
+```{r}
+
+## Frequncy
+
+itemset = c("CAPTAIN AMERICA", "SPIDER-MAN")
+ap = apriori(trans, 
+        parameter = list(support=0, target="frequent"), 
+        appearance = list(items = itemset))
+
+apriori2df(ap) %>% 
+  mutate(lift = interestMeasure(ap, measure="lift", trans)) %>% 
+  arrange(-lift)
+
+```
+
+
+:::
+
+
+## c. The [Fantastic Four](https://en.wikipedia.org/wiki/Fantastic_Four) comprises the heroes: MR. FANTASTIC, THING, INVISIBLE WOMAN, and HUMAN TORCH. If a comic includes the Fantastic Four, which other hero is most likely to be in the comic? What is the estimated probability?
+
+::: {.solution}
+
+For this problem, I calculated the confidence (probabiliy of a hero given the presence of the Fantastic Four). The hero with the highest conditional probability was Franklin B Richards, with a probability of 30.95%.
+
+```{r}
+
+## Fantastic Four -> ?
+itemset2=c("MR. FANTASTIC", "THING", "INVISIBLE WOMAN", "HUMAN TORCH")
+rule = apriori(trans, 
+              parameter = list(support=0, confidence=0.1, 
+                               minlen=1,target="rules"), 
+              appearance = list(lhs = itemset2))
+apriori2df(rule) %>% 
+  arrange(-confidence)
+
+```
+
+
+:::
+
+
+
+# Problem 2 (15 pts): Hero Clustering
+
+References: https://www.youtube.com/watch?v=FCmH4MqbFGs, Final office hours, Clustering lecture notes and code. 
+
+Consider two *binary* vectors $A \in \{0, 1\}^p$ and $B \in \{0, 1\}^p$
+
+- E.g. $A=[0,1,1,1]$, $B = [1,0,1,0]$ for $p=4$. 
+
+The dissimilarity, or distance, between two binary vectors can often be created from the following three measures: 
+
+- $N_A$ represents the total number of 1's in A. In example, $N_A = 3$. 
+- $N_B$ represents the total number of 1's in B. In example, $N_B = 2$. 
+- $N_{AB}$ represents the total number of positions where where A and B both have a value of 1. In example, $N_{AB} = 1$ (due to the 3rd position/element of the vectors)
+
+
+## a. Write out the equations for [*cosine distance*](https://en.wikipedia.org/wiki/Cosine_similarity), [*Jaccard's distance*](https://en.wikipedia.org/wiki/Jaccard_index), and [*Squared Euclidean distance*](https://en.wikipedia.org/wiki/Euclidean_distance#Squared_Euclidean_distance) using **only** $N_{AB}, N_A, N_B$. 
+    
+- Note: use 1-similarity to convert a similarity scores to a *distance*. 
+
+::: {.solution}
+
+Cosine Distance = $\frac{N_{AB}}{\sqrt{{N_A}}*\sqrt{{N_B}}}$
+
+Jaccard's Distance = $\frac{N_{AB}}{N_A+N_B-N_{AB}}$
+
+Squared Euclidean Distance = $N_A+N_B-(2*N_{AB})$
+
+:::
+
+
+## b. The Marvel heroes INVISIBLE WOMAN and THING appeared in $668$ comics together. Use the data from Problem 1 to calculate the three *distances* between INVISIBLE WOMAN and THING. 
+
+- The vectors represent the presence or absence of the heroes in each comic
+
+::: {.solution}
+
+```{r}
+library(arules)
+library(dplyr)
+N_AB= 688
+
+## Calculate N_A = Invisible Woman
+
+N_A=itemFreq$n[itemFreq$hero=="INVISIBLE WOMAN"]
+
+## Calculate N_B = Thing
+
+N_B=itemFreq$n[itemFreq$hero=="THING"]
+
+## Distances
+
+cos_dist=N_AB/(sqrt(N_A)*sqrt(N_B))
+jac_dist=N_AB/(N_A+N_B-N_AB)
+euc_dist=N_A+N_B-(N_AB*2)
+
+```
+
+```{r}
+print("The Cosine Distance is ")
+print(cos_dist)
+```
+The Cosine Distance is 0.7819.
+```{r}
+print(jac_dist)
+```
+The Jaccard's Distance is 0.6347.
+
+```{r}
+print(euc_dist)
+```
+The Squared Euclidean Distance is 396.
+:::
+
+## c. The dendrogram below is constructed by running hierarchical clustering using *Jaccard's Distance* and *Single Linkage* on the 30 most frequent heroes. Describe the first 3 merges. Who gets merged, at what (approximate) height are they merged, and how single linkage is used to calculate the height.
+
+
+```{r, echo=FALSE, out.width="80%", fig.align='center'}
+knitr::include_graphics("https://mdporter.github.io/DS6030/other/jaccards-single.png")
+```
+
+
+::: {.solution}
+
+Hierarchical clustering works through an algorithm that starts by comparing the dissimilarity in distance between all pairs of points. Here, the distance used is Jaccard's Distance (defined in part a.). The first points to merge are defined by the clustering approach used, which in this case is "single linkage;" i.e. the least distance between clusters of points. 
+
+In this particularly example, the first pair to merge is Mr. Fantastic and Invisible Woman at a height of ~0.28. The second merge would occur between the Human Torch and the existing cluster {Mr. Fantastic, Invisible Woman} at a height of ~0.30. The third merge would occur between the Thing and the existing cluster {Human Torch, Mr. Fantastic, Invisible Woman} at a height of ~0.35.
+
+:::
+
+
+## d. The dendrogram below is constructed by running hierarchical clustering using *Cosine Distance* and *Complete Linkage* on the 30 most frequent heroes. How many clusters result if the dendrogram is cut at a height of 0.70? What is the largest possible Cosine Distance between THOR and SCARLET WITCH? 
+
+
+```{r, echo=FALSE, out.width="80%", fig.align='center'}
+knitr::include_graphics("https://mdporter.github.io/DS6030/other/cosine-complete.png")
+```
+
+
+::: {.solution}
+
+If the dendrogram is cut at this height, it appears that there would be eleven clusters defined (NOTE TO GRADER: this is counting individual heroes - like Dr. Strange - as individual clusters that are not merged until thresholds above 0.70. Dr. Porter said to treat these individuals at the bottom of the dendrogram as separate clusters). The highest Cosine Distance between THOR and SCARLET WITCH appears to be 0.75.
+
+:::
+
+
+
+# Problem 3 (15 pts): Predictive Density Estimation Contest
+
+References: Session 16 Lecture Nodes, Assignment 5, Assignment 6, https://mclust-org.github.io/mclust/articles/mclust.html#introduction-1, https://rdrr.io/cran/mclust/man/predict.densityMclust.html,
+https://journal.r-project.org/archive/2016/RJ-2016-021/RJ-2016-021.pdf
+
+In HW 5.2, you estimated the (space-time) density of highway crashes on I-64 in 2016 using Kernel Density Estimation (KDE). In this problem, you will re-estimate the density, using the method of your choice, with the goal of predicting the density of the crashes in 2017. 
+
+This will be a contest. You will submit your 2017 density estimates at a set of evaluation grid points and I will evaluate your predictions using the predictive log-likelihood ratio (or information gain) score:
+\[
+score = \sum_{i=1}^n \log \frac{\hat{f}(mile_i, time_i)}{p(mile_i, time_i)}
+\]
+where $\hat{f}(m, t)$ is your prediction for $(mile=m, time=t)$, 
+$p(m, t)$ is my predictions, and the sum is over the $n$ points in the 2017 test data. A positive score means that you did better than my predictions - you will receive a 2% bonus on your exam score! 
+
+## a. Use the same data that was given in HW 5.2, `crashes16.csv`, to make your predictive density estimate. Make predictions at the grid points
+```{r}
+eval.pts = expand_grid(mile = seq(86.9, 136.1, by=.25), time = seq(0, 7, by=1/24))
+```
+- Show your code.
+- Note: I will normalize your density, $f_i'=f_i/\sum_j f_j$, so it sums to one (and effectively converts it to a discrete pmf). 
+
+
+::: {.solution}
+
+```{r}
+## Read data and visualize
+df3=read_csv("https://mdporter.github.io/DS6030/data//crashes16.csv")
+hist(df3$mile)
+hist(df3$time)
+plot(x=df3$time, y=df3$mile)
+```
+```{r}
+library(broom)
+## Estimate the density at given eval.pts using model of choice: model-based clustering (MV normal mix model)
+
+## Scale the data
+
+#df3_scaled=scale(df3) # SD 1, Mean 0
+
+## Divide the data into test and training
+
+MM=densityMclust(df3, verbose=TRUE)
+summary(MM)
+plot(MM, what = "BIC") ## Ideal model (highest BIC) has four components:Diagonal-Dist, Equal-Volume Equal-Shape 
+glance(MM)
+plot(MM, what="density", type="hdr",
+     data=df3_scaled,points.cex=0.5)
+plot(MM, what="density", type="persp")
+
+```
+```{r}
+## Predict on eval points
+
+glance(MM)
+MM$modelName # optimal model
+#scaled_eval=scale(eval.pts)
+pred1=predict(MM, eval.pts, what = c("dens"), logarithm = FALSE)
+summary(MM, parameters=TRUE)
+plot(pred1)
+
+```
+
+```{r eval=FALSE, echo=FALSE}
+## Kernel density estimate
+
+library(ks)
+h1=Hscv(df3) # Multivariate smoothed cross validation
+h2=Hnm(df3, G=1:20) # Normal mixture bandwidth
+h3=Hpi(df3) # Plug in bandwidth selector for unconstrained bandwidth matrices
+h4=Hbcv(df3) # Biased cross validation bw matrix selector for bivariate data
+h_attempts=c(Hscv=h1, Hnm=h2, Hpi=h3, Hbcv=h4)
+h_attempts
+plot(kde(df3, H=h1))
+plot(kde(df3, H=h2))
+plot(kde(df3, H=h3))
+plot(kde(df3, H=h4),X=eval.pts)
+fhat1=kde(df3,H=h2)
+predict(df3, eval.pts, fhat1)
+?predict()
+
+?kde()
+kernel=kde(df3, h=h2)
+plot(kernel)
+?bw.nrd0
+```
+
+
+:::
+
+## b. Create a .csv file named `lastname_firstname.csv` that includes the columns named *mile*, *time*, *f*, where *f* is your estimated density. Submit this file in Collab. 
+
+::: {.solution}
+
+```{r}
+
+results=tibble(mile=eval.pts$mile, time=eval.pts$time, f=pred1)
+write_csv(results, "keeley_nicholas.csv")
+
+```
+
+
+:::
+
+## c. Describe the model you used. Make sure to mention why you chose your model, what the unknown parameters in your model are, and how those parameters were estimated. You may need to read the function documentation; I'm not looking for the full mathematical details but you do need to specify the method used. 
+
+- You are free to use any model, even if we didn't cover it in class.
+
+::: {.solution}
+
+Recognizing that the data is multivariate (mile and time), I decided to pursue a  Gaussian finite mixture model approach. Specifically, I decided to use model-based clustering via the "densityMclust" (multivariate) function within the "mclust" package. Broadly speaking, the parameters for Gaussian finite mixture models consist of the number of components (K), the means for each component, and the variance-covariance matrices for each component. The function works by examining the Bayesian Information Criterion, which ultimately compares the maximum likelihood across mixture models ranging in component size from 1 to 9. The model with the highest BIC was the model I chose, which contained four components (K=4). The densityMclust function also evaluates these models against 14 different constraints, optimizing to the shape, volume, and distribution of the component distributions (translating to the optimal variance-covariance matrices) chosen. The chosen model details are listed in the code block below:
+
+```{r}
+
+summary(MM, parameters=TRUE)
+
+```
+
+
+:::
+
+# Problem 4 (5 pts): Network Clustering 
+
+References: https://igraph.org/r/doc/as.directed.html, https://igraph.org/r/doc/laplacian_matrix.html, https://en.wikipedia.org/wiki/Eigenvalues_and_eigenvectors, https://www.datacamp.com/community/tutorials/sorting-in-r,
+Session 16 Class Notes/Code,
+https://igraph.org/r/doc/vertex_attr.html
+
+It was mentioned in class that *community detection* could be considered as a clustering of the nodes in a network. *Spectral clustering* is a clustering approach that uses the eigenvectors from the graph *Laplacian* as the features for clustering. In this exercise you will implement a version of spectral clustering. 
+
+The spectral clustering algorithm for $K$ clusters is as follows:  
+
+1. Find the eigenvectors associated with the $K$ *smallest* eigenvalues of the graph Laplacian $L$. 
+2. Run $k$-means clustering to find $K$ clusters using the $K$ eigenvectors as the features/variables. 
+
+Use the Laplacian $L = D-A$, where $D$ is the diagonal matrix with node degree along the diagonal and $A$ is the (unweighted) adjacency matrix. 
+
+Hint: the R function `eigen()` finds the eigenvalues and eigenvectors of a matrix. There will be one $0$ eigenvalue in this problem, but due to round-off error it will have a value on the order of $10^{-16}$.  
+
+
+## a. The `UKfaculty` network found in the `igraphdata` R package is a social network of university faculty. The graph can be loaded into R with the command `data(UKfaculty, package='igraphdata')`. Calculate the graph Laplacian using an undirected and unweighted version of the graph. 
+
+- Load the `UKfaculty` data
+- Show the code used to produce $L$.
+
+::: {.solution}
+
+
+
+```{r}
+library(igraph)
+data(UKfaculty, package='igraphdata')
+G=UKfaculty
+V(G)$weight
+G_un=as.undirected(G)
+#E(G_un)$weights # Good
+V(G_un)$group
+plot(G_un)
+
+## Generate L
+L=laplacian_matrix(G_un)
+```
+
+:::
+
+## b. Implement spectral clustering of the `UKfaculty` network for $K=1,2,\ldots, 9$. 
+
+- Show your code. 
+- Plot the eigenvalues as a function of $K$
+- Also plot the sum of squared errors (SSE) as a function of $K$
+
+::: {.solution}
+
+```{r}
+set.seed(2021)
+
+
+
+## Generate the eigenvectors of L, ordered by K lowest eigenvectors
+
+features=eigen(L)
+features
+K_max=9
+eigen_values=features$values
+eigen_values=eigen_values[order(eigen_values)]
+eigen_values
+eigen_values=eigen_values[1:K_max+1]
+eigen_values
+result=features$vectors[,eigen_values]
+result
+
+## Run K-means clustering
+
+data=as_tibble(result)
+
+SSE=numeric(K_max)
+for(k in 1:K_max){
+  km=kmeans(data, centers=k, nstart=100)
+  SSE[k]=km$tot.withinss
+}
+
+plot(eigen_values[1:K_max+1],SSE, type='o', las=1,xlab="Eigenvalue (K)")
+
+
+```
+
+:::
+
+## c. Estimate $K$. Explain why you selected that value of $K$. 
+
+::: {.solution}
+
+I would choose K=4 because the reduction in SSE as a function of K stays relatively constant  after K=4 ("bend" of the elbow, even though its a very inverted looking elbow plot). According to the elbow plot above, this seems like an appropriate balance between bias and variance.
+
+:::
+
+## d. Using your chosen value of $K$, evaluate how well the resulting clustering can distinguish between the school affiliation of the nodes. Use the vertex attribute `Group` (in the `UKfaculty` graph) as the true label and calculate how many nodes would be *misclassified* by the clustering. 
+
+- Use majority class rule to determine how to classify each cluster. (If the estimated clusters contain more than one affiliation, classify as the most frequent affiliation.)
+
+::: {.solution}
+
+My chosen value of K did not perform well in distinguishing school affiliation. I believe this was primarily due to the fact that my model had a heavy tendency towards estimating group 2, regardless of true affiliation. Overall, my model misclassified 57 of the 81 faculty members with the chosen K.
+
+```{r}
+## Extract true label
+
+set.seed(2021)
+true_label=vertex_attr(G_un, "Group")
+length(true_label)
+
+## Evaluate
+
+k_chosen=4
+km1=kmeans(data, centers=k_chosen, nstart=100)
+table(est=km1$cluster, true=true_label)
+
+```
+
+
+:::
+
+
+
+
+
+
+
+
+
+
