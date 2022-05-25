@@ -1,0 +1,306 @@
+---
+title: "Homework #5: Density Estimation" 
+author: "**Nicholas Keeley**"
+date: "Due: Thu Oct 21 | 3:25pm"
+output: R6030::homework
+---
+
+NOTE: I referenced Lecture 14 for the KDE code in this assignment, and consulted classmate Geoff Hansen on the derivation math for problem 1.a.
+
+**DS 6030 | Fall 2021 | University of Virginia**
+
+------------------------------------------------------------------------
+
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+# options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+
+# Required R packages and Directories
+
+::: {.solution}
+```{r packages, message=FALSE, warning=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data/' # data directory
+library(R6030)     # functions for SYS-6018
+library(ks)        # functions for KDE
+library(tidyverse) # functions for data manipulation   
+```
+:::
+
+
+# Problem 1 Geographic Profiling
+
+Geographic profiling, a method developed in criminology, can be used to estimate the [home location (roost) of animals](https://www.sciencedirect.com/science/article/pii/S0022519305004157) based on a collection of sightings. The approach requires an estimate of the distribution the animal will travel from their roost to forage for food. 
+
+A sample of $283$ distances that pipistrelle bats traveled (in meters) from their roost can be found at: 
+
+- **Bat Data**: <https://mdporter.github.io/DS6030/data/geo_profile.csv>
+
+
+One probability model for the distance these bats will travel is:
+\begin{align*}
+f(x; \theta) = \frac{x}{\theta} \exp \left( - \frac{x^2}{2 \theta} \right)
+\end{align*}
+where the parameter $\theta > 0$ controls how far they are willing to travel. 
+
+
+## a. Derive the MLE for $\theta$ (i.e., show the math). 
+
+::: {.solution}
+
+\begin{align*}
+\ln(L(\theta)) = \sum_{i=1}^{n} \ln(f(x_{i}; \theta))
+\end{align*}
+
+\begin{align*}
+1) \hspace{12pt} = \ln(\frac{x_{i}}{\theta} + \ln \exp \left( - \frac{x_{i}^2}{2 \theta} \right)
+\end{align*}
+
+\begin{align*}
+2) \hspace{12pt} = \ln(x_{i}) - \ln(\theta) - \left(\frac{x_{i}^2}{2 \theta} \right)
+\end{align*}
+
+\begin{align*}
+3) \hspace{12pt} \frac{\partial}{\partial \theta} \sum_{i=1}^{n} \ln(x) - \ln(\theta) - \left(\frac{x^2}{2 \theta} \right) = \sum_{i=1}^{n} -\frac{1}{\theta} + \left(\frac{x^2}{2 \theta^2} \right)
+\end{align*}
+
+\begin{align*}
+4) \hspace{12pt} \theta_{MAX} = \sum_{i=1}^{n} -\frac{1}{\theta} + \left(\frac{x^2}{2 \theta^2} \right) = 0
+\end{align*}
+
+\begin{align*}
+5) \hspace{12pt} = \frac{1}{2\theta} \sum_{i=1}^{n} x^2 = \frac{n}{\theta}
+\end{align*}
+
+\begin{align*}
+6) \hspace{12pt} \theta_{MAX} = \frac{1}{2n} \sum_{i=1}^{n} x^2
+\end{align*}
+
+
+:::
+
+
+## b. What is the MLE of $\theta$ for the bat data? (Use results from a, or use computational methods.) 
+
+::: {.solution}
+
+```{r echo=FALSE, results='markup'}
+
+## Read the data
+
+df=read_csv("https://mdporter.github.io/DS6030/data/geo_profile.csv", col_names = FALSE)
+df=tibble(meters=df$X1)
+
+## Create data frame with sum log-likelihoods for a sequence of thetas
+
+x=df$meters
+theta.seq=seq(0.1,20,length=30)
+ntheta=length(theta.seq)
+loglike=numeric(ntheta)
+
+for(i in 1:ntheta){
+  pfunction=sum(log((x/theta.seq[i])*exp(-(x^2)/(2*theta.seq[i]))))
+  loglike[i]=pfunction
+}
+
+loglike=tibble(loglikelihood=loglike,
+               theta=theta.seq)
+
+## Print output
+
+plot(loglike$theta, loglike$loglikelihood, xlab="Theta", ylab="Log Likelihood", type="p")
+
+
+theta_MLE=theta.seq[which.max(loglike$loglikelihood)]
+paste("The MLE for theta is: ", theta_MLE)
+```
+
+
+:::
+
+
+## c. Using the MLE value of $\theta$ from part b, compute the estimated density at a set of evaluation points between 0 and 8 meters. Plot the estimated density.
+
+::: {.solution}
+
+```{r}
+
+## Plot sequence of x values between 0-8 to see density
+
+x.seq=seq(0,8,length=100)
+
+prob=numeric(length(x.seq))
+for(i in 1:length(x.seq)){
+  pfunction=(x.seq[i]/theta_MLE)*exp(-(x.seq[i]^2)/(2*theta_MLE))
+  prob[i]=pfunction
+}
+result=tibble(x=x.seq,
+              probability=prob)
+plot(result$x, result$probability, xlab="Meters", ylab="Density")
+#hist(df$meters)
+```
+
+
+:::
+
+
+## d. Estimate the density using KDE. Report the bandwidth you chose and produce a plot of the estimated density. 
+
+
+::: {.solution}
+
+## Lower case h for univariate
+## Upper case H for MV
+```{r echo=FALSE, results='markup'}
+
+## Estimate density using KDE
+
+f.kde=kde(df$meters)
+plot(f.kde)
+
+## Show chosen h
+
+paste("Bandwith was chosen using HPI method: ", f.kde$h)
+
+```
+
+
+:::
+
+
+## e. Which model do you prefer, the parametric or KDE? 
+
+::: {.solution}
+
+I prefer the KDE model because it provides more granularity than the parametric model through providing local density around each point, rather than applying a uniform or rigid parametric function that applies equal density weights around each point.
+
+:::
+
+
+
+
+# Problem 2: Interstate Crash Density
+
+Interstate 64 (I-64) is a major east-west road that passes just south of Charlottesville. Where and when are the most dangerous places/times to be on I-64? The crash data (link below) gives the mile marker and fractional time-of-week for crashes that occurred on I-64 between mile marker 87 and 136 in 2016. The time-of-week data takes a numeric value of *\<dow\>.\<hour/24\>*, where the dow starts at 0 for Sunday (6 for Sat) and the decimal gives the time of day information. Thus `time=0.0417` corresponds to Sun at 1am and `time=6.5` corresponds to Sat at noon. 
+
+- **Crash Data**: <`r file.path(data.dir, 'crashes16.csv')`>
+
+
+## a. Extract the crashes and make a scatter plot with mile marker on x-axis and time on y-axis. 
+::: {.solution}
+
+```{r echo=FALSE}
+
+df2=read_csv("https://mdporter.github.io/DS6030/data//crashes16.csv")
+plot(df2$mile, df2$time, xlab="Mile Marker", ylab="Timestamp")
+```
+
+
+:::
+
+
+## b. Use KDE to estimate the *mile marker* density. 
+
+- Report the bandwidth. 
+- Plot the density estimate.
+
+::: {.solution}
+
+```{r}
+
+## Bandwidth
+
+b.kde=kde(df2$mile)
+paste("Bandwith was chosen using HPI method: ", b.kde$h)
+
+```
+
+
+```{r}
+
+## KDE estimate
+
+plot(b.kde, xlab="Mile Marker")
+
+```
+
+
+:::
+
+
+## c. Use KDE to estimate the temporal *time-of-week* density. 
+
+- Report the bandwidth. 
+- Plot the density estimate. 
+
+:::: {.solution}
+```{r}
+
+## Bandwidth
+
+c.kde=kde(df2$time)
+paste("Bandwith was chosen using HPI method: ", c.kde$h)
+
+```
+
+
+```{r}
+
+## KDE estimate
+
+plot(c.kde, xlab="Timestamp")
+```
+:::
+
+
+## d. Use KDE to estimate the bivariate mile-time density. 
+
+- Report the bandwidth parameters.
+- Plot the bivariate density estimate. 
+
+::: {.solution}
+
+```{r}
+
+## Bandwidth
+
+d.kde=kde(df2)
+d.kde$H
+paste("Bandwith was chosen using HPI method: ", d.kde$H)
+print(d.kde$H)
+
+```
+```{r}
+## Density plot
+
+plot(d.kde)
+```
+
+
+:::
+
+
+## e. Based on the estimated density, approximate the most dangerous mile marker and time-of-week. 
+
+::: {.solution}
+
+The most dangerous mile marker/combination on this highway appears to be mile marker 118 at 12:43PM on Monday.  
+
+```{r}
+
+## Milemark with highest probability of crashes (indp. of time)
+
+b.kde$eval.points[which.max(b.kde$estimate)]
+
+## Time with highest probability of crashes (indp. of milemarker)
+
+c.kde$eval.points[which.max(c.kde$estimate)]
+
+```
+
+
+
+:::
+
+		
