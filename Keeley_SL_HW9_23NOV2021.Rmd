@@ -1,0 +1,287 @@
+---
+title: "Homework #9: Association Analysis" 
+author: "**Nick Keeley**"
+date: "Due: Tue Nov 30 | 3:25pm"
+output: R6030::homework
+---
+
+**DS 6030 | Fall 2021 | University of Virginia**
+
+------------------------------------------------------------------------
+
+NOTE TO GRADER: I referenced the Association Lecture notes, and code from "instacart.R" starter code provided, in order to complete this assignment. Code from the instacart.R file was modified to reflect the needs of this assignment. I made sure to understand the theoretical elements behind this code before using it.
+
+
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+
+# Required R packages and Directories
+
+::: {.solution}
+```{r packages, message=FALSE, warning=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data/' # data directory
+library(R6030)     # functions for DS-6030
+library(arules)    # functions for Association Rules
+library(tidyverse) # functions for data manipulation   
+```
+:::
+
+
+# Problem 1: Interestingness 
+
+Suppose we have market basket data consisting of 100 transactions and 20 items. Assume the support for item {$a$} is 20%, support for item {$b$} is 85%, and support for itemset {$a,b$} is 15%. 
+
+
+## a. What is the confidence of the rule {a} $\rightarrow$ {b}? 
+
+::: {.solution}
+
+The confidence of this rule translates to the P(B|A). This is equal to the P(A,B) / P(A). Therefore, the confidence is 0.75.
+```{r}
+
+## Analysis
+
+result = .15/.2
+paste("The answer is ",result)
+
+
+```
+
+
+:::
+
+
+## b. Will the apriori algorithm find this rule (interesting) if the confidence threshold (minconf) is $c=.60$ and the support threshold (minsup) is $s=.10$?  
+
+::: {.solution}
+
+Yes, the individual support levels of each subcomponent, as well as the rule's confidence level, surpass the thresholds specified.
+
+:::
+
+
+## c. Find the *lift* of this rule. 
+
+::: {.solution}
+
+The lift is C(A->B) / S(B). This computes to 0.88.
+
+:::
+
+## d. Find the *addedValue* of this rule. 
+
+::: {.solution}
+
+According to our textbook, the Added Value of this rule is C(A -> B) - S(B). This computes to an Added Value of -0.1.
+
+:::
+
+
+## e. Find the *leverage/PS* of this rule. 
+
+::: {.solution}
+
+The leverage is S(A,B) - S(A) S(B). This computes to -0.02.
+
+:::
+
+
+## f. Describe the nature of the relationship between items {a} and {b} according to *lift*, *addedValue* and *leverage/PS*. What observation can you draw from parts (b) and (c-e)? 
+
+::: {.solution}
+
+The Leverage is negative, but very close to zero. This suggests that the joint prevalence of A and B within our transactional data base is less than what we would expect about the prevalence of A and B occurring independently within the database. This suggests some sort of inhibitive relationship.
+
+This is further supported by the Lift, which is less than 1, but is not a directional measure (while leverage does seem to be). The Lift is like a ratio version of Leverage.
+
+The Added Value serves as the final piece of the puzzle, explaining that the conditional probability of B given A is actually less than the support for B alone. Therefore, conditioning on A actually reduces the prevalence of B, fulfilling our intuition about the inhibitive relationship between A and B.
+
+:::
+
+## g. Let $p(a)$, $p(b)$, and $p(a,b)$ be the actual probabilities of observing items {a}, {b}, and {a,b} respectively in a transaction. What is the expected confidence rule {a} $\rightarrow$ {b} if a and b are independent? 
+
+::: {.solution}
+
+Using the laws of conditional probability (captured in Bayes Theorem), we would expect C(A->B) to be equivalent to P(B|A), which in turn is equal to P(A|B) P(B) / P(A). If A and B were independent, then this would reduce to P(A) P(B) / P(A), which ultimately reduces to P(B). Therefore, the expected confidence rule A -> B would simply be P(B), which is equivalent to S(B), which is 0.85.
+
+:::
+
+
+
+
+# Problem 2: Online Retail
+
+The website <http://archive.ics.uci.edu/ml/datasets/online+retail> describes some transactional data from an online retailer. 
+
+
+## a. Download the [excel file](http://archive.ics.uci.edu/ml/machine-learning-databases/00352/Online%20Retail.xlsx) to your machine and read it into R. 
+- Hint: `readxl::read_excel()` (part of tidyverse)
+
+::: {.solution}
+
+```{r}
+## Read in data
+
+df=readxl::read_excel("Online Retail.xlsx")
+
+
+```
+
+
+:::
+
+
+## b. There are many quality problems with this dataset, but we will only address two of them. Remove all of the rows with missing Description values (NAs) and remove any duplicate items in a single transaction. Print the first 10 rows of the resulting data. 
+
+::: {.solution}
+
+```{r}
+
+## Drop NAs
+
+df_clean=df[!is.na(df$Description),]
+
+## Remove duplicate descriptions for transactions
+
+tgts=c(1,3)
+df_clean[,tgts]
+df_clean=df_clean[!duplicated(df_clean[,tgts]),]
+
+## Print first ten rows
+
+print(df_clean[0:10,])
+
+```
+
+
+:::
+
+## c. Find the number of transactions and number of items using *InvoiceNo* for transactions and *Description* as items (i.e., ignore the *StockCode* column).
+
+::: {.solution}
+
+```{r}
+
+## Number of transactions
+
+N=length(unique(df_clean$InvoiceNo))
+
+## Number of items
+
+i=length(df_clean$Description)
+
+## Print results
+
+paste("The number of transactions is ", N)
+paste("The number of items is ",i)
+```
+
+
+:::
+
+
+## d. Convert the data frame into a *transaction list* and convert it into a *transactions object* (don't forget to load the `arules` package). Print a summary (using `summary()`) of the new object. 
+
+::: {.solution}
+
+```{r}
+library(arules)
+
+## Transaction list
+
+tList2 = split(df_clean$Description, df_clean$InvoiceNo) 
+
+## Transactions object
+
+trans=as(tList2,"transactions")
+print(summary(trans))
+
+```
+
+
+:::
+
+## e. Find the items with the highest support. Print and plot the support of the top 10. 
+
+::: {.solution}
+
+```{r}
+library(arules)
+
+## Get item counts
+
+itemFreq = count(df_clean, Description, sort=TRUE) %>% mutate(support=n/N)
+
+## plot top 10
+
+itemFreq %>% slice(1:10) %>% 
+  ggplot(aes(fct_reorder(Description, support), support)) + # order bars by n
+  geom_col() +         # barplot
+  coord_flip() +       # rotate plot 90 deg
+  theme(axis.title.y = element_blank()) # remove y axis title
+
+print(itemFreq$support[1:10])
+```
+
+
+:::
+
+## f. Find the *frequent itemsets* that contain at least 3 items and have $s\geq 0.02$. Add the *lift* metric. Show all results, ordered by *lift*. 
+
+::: {.solution}
+
+```{r}
+
+## Frequent with three items and thresh 0.02
+
+fis = apriori(trans, 
+               parameter = list(support = .02, minlen=3, target="frequent"))
+
+#-- Add lift using the interestMeasure() function
+
+temp=apriori2df(fis) %>% 
+  mutate(lift = interestMeasure(fis, measure="lift", trans)) %>% 
+  arrange(-lift)
+
+print(temp)
+```
+
+
+
+:::
+
+## g. Find all of the *association rules* with $s \geq 0.02$, $c \geq 0.70$. Add the *PS/leverage* and *addedValue* metrics. Show all results, ordered by *addedValue*
+
+::: {.solution}
+
+```{r}
+
+## New apriori
+
+fis2 = apriori(trans, 
+               parameter = list(support = .02, conf=.7, target="rules"))
+
+#-- Add other interest measures using the interestMeasure() function
+
+temp2=apriori2df(fis2) %>% 
+  mutate(addedValue = interestMeasure(fis2, measure="addedValue", trans),
+         PS=interestMeasure(fis2, measure="leverage",trans)) %>%
+  arrange(-addedValue)
+
+print(temp2)
+```
+
+
+:::
+
+
+## h. Find one rule that you think is interesting. Write the rule and explain why you find it interesting. 
+
+::: {.solution}
+
+I think the Roses Regency Teacup and Saucer -> Green Regency Teacup and Saucer is interesting for objective and subjective reasons. From an objective standpoint, this rule has low support but high confidence, and one of the largest "leverage" measures in the list. This suggests to me that the joint probability of these singleton itemsets surpasses expectations. From a subjective standpoint, I did not expect someone who buys a teacup and saucer to be more likely to buy another one. However, this may tell us something about the kinds of purchasers of regency teacup and saucers. Perhaps these items are rare/vintage, and often purchased by collectors. This would explain the increase in joint purchase prevalence, which defies the intuition behind purchasing teacups/saucers merely for functional purposes (i.e. pouring tea).
+
+:::
