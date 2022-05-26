@@ -1,0 +1,1227 @@
+---
+title: "Exam I"
+author: "**Nicholas Keeley**"
+date: "Due: Thu Oct 7 3:25pm"
+output: R6030::homework
+---
+
+**DS 6030 | Fall 2021 | University of Virginia**
+
+*******************************************
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+::: {style="background-color:lightgrey; display: block; border-color: black; padding:1em"}
+
+- You may **not** discuss this exam with anyone else (besides teaching staff). All work must be done independently. You may consult textbooks, online material, etc. but any outside resource must be cited.
+    - Add an informal reference (e.g., url, book title) to any source consulted for each problem. 
+    - You may reuse code from my class materials/homework solutions, just make a note that you did so. 
+
+- Unless otherwise noted, all referenced datasets will be found at directory `https://https://mdporter.github.io/DS6030/data`. In R, the path to these files can be obtained by
+```{r, eval=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data'
+file.path(data.dir, "filename.ext")
+```
+:::
+
+
+# Required R packages and Directories
+
+::: {.solution}
+```{r packages, message=FALSE, warning=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data' # data directory
+library(glmnet)    # functions for penalized GLM
+library(R6030)     # functions for DS-6030
+library(tidyverse) # functions for data manipulation   
+library(FNN)
+```
+:::
+
+# Problem 1 (16 pts): Human Activity Recognition 
+
+
+A current engineering challenge is to identify/classify human activity (e.g., walking, in car, on bike, eating, smoking, falling) from smartphones and other wearable devices. 
+More specifically, the embedded sensors (e.g., accelerometers and gyroscopes) produce a time series of position, velocity, and acceleration measurements. These time series are then processed to produce a set of *features* that can be used for activity recognition. In this problem, you will use supervised learning methods to classify observations into one of six categories: Walking (1), Walking upstairs (2), walking downstairs (3), Sitting (4), Standing (5), and Laying Down (6).  
+
+For those with interest, the details of the data collection process and features can be found in this [paper](https://www.elen.ucl.ac.be/Proceedings/esann/esannpdf/es2013-84.pdf). The performance of the support vector machine (SVN) classifier used in the paper is given in Table 4 (shown here):
+```{r, echo=FALSE, out.width="50%", fig.align='center'}
+knitr::include_graphics(file.path(data.dir, "../other/HAR-table.png"))
+```
+
+
+## a. Load the training and test data.
+
+- Training Data: [activity_train.csv](https://mdporter.github.io/DS6030/data/activity_train.csv)
+- Testing Data: [activity_test.csv](https://mdporter.github.io/DS6030/data/activity_test.csv)
+- The first column are the labels and the remaining columns are the 561 predictor variables
+- Assume 1 = WK, 2 = WU, ... 6 = LD. 
+
+::: {.solution}
+
+```{r}
+#### References: Lecture 9 - Classification; #### https://stackoverflow.com/questions/21585721/how-to-create-an-empty-matrix-in-r;
+#### https://dplyr.tidyverse.org/reference/rename.html;
+#### https://www.datamentor.io/r-programming/if-else-statement/;
+#### Lecture 6 - Penalized Regression
+#### Lecture 3 - KNN
+#### https://dplyr.tidyverse.org/reference/group_by.html;
+#### HW 1, 2, 3, and 4 solutions.
+
+
+## Load the data
+
+df.train=read_csv("activity_train.csv")
+df.test=read_csv("activity_test.csv")
+
+## 1 = Walk WK
+## 2 = W. Upstairs WU
+## 3 = W. Downstairs WD
+## 4 = Sitting ST
+## 5 = Standing SD
+## 6 = Lay Down LD
+
+```
+
+
+:::
+
+
+## b. K-nearest neighbor (KNN)
+
+Fit a K-nearest neighbor model (KNN), using all of the features, make predictions for the test set and construct a confusion matrix like Table 4 of the paper (you don't have to include Recall and Precision). 
+
+- Provide your code
+- Ensure the table has the correct order of rows/columns (the names don't have be used)
+- Use $k = 10$
+
+::: {.solution}
+
+```{r}
+#### References: Lecture 3 - KNN; Lecture 9 - Classification; Assignment 3
+
+## Setup
+
+set.seed(2021)
+k=10
+
+## Fit KNN model
+
+knn.10 = knn(train=select(df.train,-y), test=select(df.test,-y), cl=df.train$y, k=k)
+
+## Predict on test data
+
+pred=knn.10 #Note: values between discrete. Hard classification?
+
+## Confusion matrix
+
+G.hat=pred
+
+## Confusion matrix
+
+G.test=df.test$y
+t1=table(predicted=G.hat, truth = G.test) %>% addmargins()
+t1
+```
+
+
+:::
+
+
+## c. KNN Performance
+
+How well did KNN do compared to the method employed in the paper? 
+
+- Report total Accuracy, Precision, and Recall. 
+
+::: {.solution}
+
+In terms of recall, KNN performed worst on WK, W.Upstairs, W.Downstairs, and Standing, but better on Sitting and just as well as on the Laying Down classifier.
+
+In terms of precision, KNN performed better on WK and Standing classifiers, but worse on all others (including Laying Down, marginally). 
+
+In terms of overall accuracy, KNN stood at just above 90%, whereas the model in the paper was above 96%.
+
+```{r}
+
+
+## 1 = Walk WK
+## 2 = W. Upstairs WU
+## 3 = W. Downstairs WD
+## 4 = Sitting ST
+## 5 = Standing SD
+## 6 = Lay Down LD
+
+
+## Recall
+
+recall=tibble(WK=NA,
+           WU=NA,
+           WD=NA,
+           ST=NA,
+           SD=NA,
+           LD=NA)
+
+n=nrow(t1)-1
+c=ncol(t1)-1
+
+acc=0
+sum=0
+for(i in 1:n){
+    for(j in 1:c){
+        if(i==j){
+            acc=t1[i,j]
+        }
+    }
+    sum=t1[i,7]
+    recall[i]=acc/sum
+}
+print(recall)
+
+```
+
+```{r}
+
+## Precision
+
+precision=tibble(WK=NA,
+           WU=NA,
+           WD=NA,
+           ST=NA,
+           SD=NA,
+           LD=NA)
+
+n=nrow(t1)-1
+c=ncol(t1)-1
+acc=0
+sum=0
+for(j in 1:c){
+    for(i in 1:n){
+        if(i==j){
+            acc=t1[i,j]
+        }
+    }
+    sum=t1[7,j]
+    precision[j]=acc/sum
+}
+print(precision)
+```
+
+
+```{r}
+
+## Accuracy
+
+temp=tibble(WK=NA,
+           WU=NA,
+           WD=NA,
+           ST=NA,
+           SD=NA,
+           LD=NA)
+
+for(i in 1:n){
+    for(j in 1:c){
+        if(i==j){
+            acc=t1[i,j]
+        }
+    }
+    temp[i]=acc
+}
+temp=sum(temp)
+total=t1[7,7]
+accuracy=temp/total
+accuracy
+
+```
+
+:::
+
+
+# Problem 2 (17 pts): One vs. Rest Classification for multi-class problems
+
+In KNN, it is straightforward to fit a model with more than two classes. Other methods, like Logistic Regression, are designed to deal with response variables that take only two values. However we can still use binary classifiers for a multi-class problems. One approach, called *one-vs-rest* is the easiest to implement (<https://en.wikipedia.org/wiki/Multiclass_classification>, and see ISL 9.4.2).
+
+For response variables that take K values, K models will be fit. Model 1 will be fit to discriminant class $1$ from all the other classes ($\{2,\ldots, K\}$). Model 2 will be fit to discriminate class $2$ from all the other classes ($\{1, 3, 4, \ldots, K\}$), etc. The estimated class for observation $Y_i$ is the one receiving the highest probability score (this assumes equal costs of mis-classification).
+
+Details: To fit model $k$ on the training data, code $Y=1$ if the label is $k$ and $Y=0$ if the label is not $k$ (thus comparing class $k$ vs all the rest). Then on the test data, calculate $\hat{p}_k(x_i)$, the estimated probability that $Y = 1$ according to model $k$. The estimated class label for test observation $i$ is $\arg\max_{1\leq k \leq K} \hat{p}_k(x_i)$. 
+
+
+
+## a. One-vs-Rest
+
+Implement the *one-vs-rest* procedure using penalized logistic regression (i.e., lasso, ridge, or elasticnet) on the HAR data from problem 1. 
+
+- Describe how you selected $\alpha$ and $\lambda$ (many correct ways to do this)
+- Construct a confusion matrix like Table 4 of the paper (you don't have to include Recall and Precision). 
+- Provide your code
+- Note: this may take a long time (e.g., 20 mins) to run. Consider setting `cache = TRUE` in your code chunk to prevent re-running every time you compile.
+
+::: {.solution}
+
+I selected alpha by iterating across an alpha sequence from 0 to 1 by 0.05 increments for each model, selecting the alpha that minimized average binomial deviance among the candidate models.
+
+Using the selected alpha.hat, I then tested lambda = 0, lambda.1se, and lambda.min for each of the selected models to determine which lambda parameter minimized binomial deviance against the test data. Note: due to the runtime, I identified each of these lambdas one by one, and the optimal lamda parameters were lambda.1se for each of the models. This code does NOT process the optimal automatically, but merely prints the optimal lambda as a string.
+
+```{r}
+
+#### Procedure
+
+## Produce K logistic models that conduct binary classification of K response classes
+
+# For each of K models, estimate alpha and lambda using cross-fold validation (v)
+
+## Predict given X using K models, choosing the model with corresponding class of highest probability
+
+#### Problem 2
+
+## Create K binary response variables
+
+df.train$y1= ifelse(df.train$y==1, 1, 0)
+df.train$y2= ifelse(df.train$y==2, 1, 0)
+df.train$y3= ifelse(df.train$y==3, 1, 0)
+df.train$y4= ifelse(df.train$y==4, 1, 0)
+df.train$y5= ifelse(df.train$y==5, 1, 0)
+df.train$y6= ifelse(df.train$y==6, 1, 0)
+
+df.test$y1= ifelse(df.test$y==1, 1, 0)
+df.test$y2= ifelse(df.test$y==2, 1, 0)
+df.test$y3= ifelse(df.test$y==3, 1, 0)
+df.test$y4= ifelse(df.test$y==4, 1, 0)
+df.test$y5= ifelse(df.test$y==5, 1, 0)
+df.test$y6= ifelse(df.test$y==6, 1, 0)
+
+## Create subsets for less compile time ######### REMOVE WHEN READY
+
+#n.train=length(df.train$y)
+#h=sample(1:n.train,(.33*n.train))
+#df.train=df.train[h,]
+
+###### REMOVE WHEN READY
+```
+
+
+```{r cache=TRUE}
+
+#### Cross-fold validation to create one of K logistic models for binary classification. Alpha -> Lamda
+
+gen_model=function(input){
+        ## Setup for glmnet
+    
+    X=glmnet::makeX(select(df.train,-y,-y1, -y2, -y3, -y4, -y5, -y6), select(df.test, -y, -y1, -y2, -y3, -y4, -y5, -y6))
+    train.x=X$x
+    train.y=input # Input for function???
+    test.x=X$xtest
+    
+    ## Set up fold indices
+    
+    V=10
+    folds=rep(1:V, length=nrow(train.x)) %>% sample()
+    
+    ## Returns minimum log loss of a given alpha (given lambda min). IT WORKS.
+      
+    est_meanLL=function(alpha,folds){
+      fit.log=cv.glmnet(train.x, train.y, alpha=alpha, foldid=folds, family="binomial") # Finding minimal lambda that minimizes binomial deviance (neg log loss function)
+      min(fit.log$cvm)
+    }
+    
+    
+    #for(i in 1:1){
+    #    r1 = tibble(alpha = alpha.seq[i],
+    #                min_LL=est_meanLL(alpha.seq[i],folds))
+    #    print(r1)
+    #}
+    #alpha_loss=rbind(alpha_loss,r1)
+    
+    ## Set alpha sequence
+    
+    alpha.seq = c(0,0.5,1)
+    
+    ##  Cross validation to find the alpha with the lowest log loss
+    
+    alpha_loss = tibble()
+    for(i in 1:length(alpha.seq)){
+      r1 = tibble(alpha = alpha.seq[i],
+                  min_LL=est_meanLL(alpha.seq[i],folds))
+      alpha_loss=rbind(alpha_loss, r1)
+    }
+    alpha_loss
+    alpha.hat=alpha_loss$alpha[(alpha_loss$min_LL == min(alpha_loss$min_LL))]
+    alpha.hat
+    
+    ## Choose optimal lambda given alpha
+    
+    fit.log=cv.glmnet(train.x, train.y, alpha=alpha.hat, foldid=folds, family="binomial")
+    log(fit.log$lambda.min) # log lambda of about -7.775
+    log(fit.log$lambda.1se) # log lambda of about -7.031
+    #plot(fit.log)
+    lambda.hat=fit.log$lambda.min
+    
+    ## Create one model using optimal alpha and lambda
+    
+    K.mod=cv.glmnet(train.x, train.y, alpha=alpha.hat, foldid=folds, family="binomial")
+    return(K.mod)
+}
+
+## Generate K models
+
+K1=gen_model(df.train$y1)
+lambdas=c(0, K1$lambda.1se, K1$lambda.min)
+pred1=predict(K1, test.x, type="response",s=lambdas)
+dev=apply(pred1, 2, function(f) mean((df.train$y1-f)^2))
+best_lambda=tibble(zero=NA,
+                   lambda_1se=NA,
+                   lambda_min=NA)
+best_lambda=rbind(best_lambda,dev)
+best_lambda=best_lambda[-1,]
+if(best_lambda[1]==min(best_lambda)) print("Optimal lambda is 0")
+if(best_lambda[2]==min(best_lambda)) print("Optimal lambda is lambda.1se")
+if(best_lambda[3]==min(best_lambda)) print("Optimal lambda is lambda.min")
+pred1=predict(K1, test.x, type="response",s=K1$lambda.1se)
+
+
+K2=gen_model(df.train$y2)
+lambdas=c(0, K2$lambda.1se, K2$lambda.min)
+pred2=predict(K2, test.x, type="response",s=lambdas)
+dev=apply(pred2, 2, function(f) mean((df.train$y2-f)^2))
+best_lambda=tibble(zero=NA,
+                   lambda_1se=NA,
+                   lambda_min=NA)
+best_lambda=rbind(best_lambda,dev)
+best_lambda=best_lambda[-1,]
+if(best_lambda[1]==min(best_lambda)) print("Optimal lambda is 0")
+if(best_lambda[2]==min(best_lambda)) print("Optimal lambda is lambda.1se")
+if(best_lambda[3]==min(best_lambda)) print("Optimal lambda is lambda.min")
+pred2=predict(K2, test.x, type="response",s=K2$lambda.1se)
+
+
+K3=gen_model(df.train$y3)
+lambdas=c(0, K3$lambda.1se, K3$lambda.min)
+pred3=predict(K3, test.x, type="response",s=lambdas)
+dev=apply(pred3, 2, function(f) mean((df.train$y3-f)^2))
+best_lambda=tibble(zero=NA,
+                   lambda_1se=NA,
+                   lambda_min=NA)
+best_lambda=rbind(best_lambda,dev)
+best_lambda=best_lambda[-1,]
+if(best_lambda[1]==min(best_lambda)) print("Optimal lambda is 0")
+if(best_lambda[2]==min(best_lambda)) print("Optimal lambda is lambda.1se")
+if(best_lambda[3]==min(best_lambda)) print("Optimal lambda is lambda.min")
+pred3=predict(K3, test.x, type="response",s=K3$lambda.1se)
+
+K4=gen_model(df.train$y4)
+lambdas=c(0, K4$lambda.1se, K4$lambda.min)
+pred4=predict(K4, test.x, type="response",s=lambdas)
+dev=apply(pred4, 2, function(f) mean((df.train$y4-f)^2))
+best_lambda=tibble(zero=NA,
+                   lambda_1se=NA,
+                   lambda_min=NA)
+best_lambda=rbind(best_lambda,dev)
+best_lambda=best_lambda[-1,]
+if(best_lambda[1]==min(best_lambda)) print("Optimal lambda is 0")
+if(best_lambda[2]==min(best_lambda)) print("Optimal lambda is lambda.1se")
+if(best_lambda[3]==min(best_lambda)) print("Optimal lambda is lambda.min")
+pred4=predict(K4, test.x, type="response",s=K4$lambda.1se)
+
+K5=gen_model(df.train$y5)
+lambdas=c(0, K5$lambda.1se, K5$lambda.min)
+pred5=predict(K5, test.x, type="response",s=lambdas)
+dev=apply(pred5, 2, function(f) mean((df.train$y5-f)^2))
+best_lambda=tibble(zero=NA,
+                   lambda_1se=NA,
+                   lambda_min=NA)
+best_lambda=rbind(best_lambda,dev)
+best_lambda=best_lambda[-1,]
+if(best_lambda[1]==min(best_lambda)) print("Optimal lambda is 0")
+if(best_lambda[2]==min(best_lambda)) print("Optimal lambda is lambda.1se")
+if(best_lambda[3]==min(best_lambda)) print("Optimal lambda is lambda.min")
+pred5=predict(K5, test.x, type="response",s=K5$lambda.1se)
+
+K6=gen_model(df.train$y6)
+lambdas=c(0, K6$lambda.1se, K6$lambda.min)
+pred6=predict(K6, test.x, type="response",s=lambdas)
+dev=apply(pred6, 2, function(f) mean((df.train$y6-f)^2))
+best_lambda=tibble(zero=NA,
+                   lambda_1se=NA,
+                   lambda_min=NA)
+best_lambda=rbind(best_lambda,dev)
+best_lambda=best_lambda[-1,]
+if(best_lambda[1]==min(best_lambda)) print("Optimal lambda is 0")
+if(best_lambda[2]==min(best_lambda)) print("Optimal lambda is lambda.1se")
+if(best_lambda[3]==min(best_lambda)) print("Optimal lambda is lambda.min")
+pred6=predict(K6, test.x, type="response",s=K6$lambda.1se)
+
+## Capture the predicted class among K model predictions
+
+models=tibble(K1=pred1,
+              K2=pred2,
+              K3=pred3,
+              K4=pred4,
+              K5=pred5,
+              K6=pred6,
+              final=0)
+
+for(i in 1:range(length(pred1))){
+    temp=max(models[i,])
+    for(j in 1:6){
+        if(models[i,j]==temp){
+            models[i,7]=j
+        }
+    }
+}
+
+## Compare the actual test classifications against the predicted classifications
+
+models=cbind(models,df.test$y)
+
+```
+
+```{r}
+
+## Confusion matrix
+
+G.hat=models$final
+
+## Confusion matrix
+
+G.test=df.test$y
+t2=table(predicted=G.hat, truth = G.test) %>% addmargins()
+t2
+```
+
+:::
+
+
+## b. One-vs-Rest Performance
+
+How does this approach compare to KNN and the method employed in the paper? Report total Accuracy, Precision, and Recall. 
+
+::: {.solution}
+
+In terms of recall, the One-vs-Rest approach had higher recall ratings for WU, WD, and ST. 
+In terms of precision, the OvR approach had higher precision ratings for WK and SD.
+The overall accuracy was equivalent to the model in the paper at approximately 96%.
+
+```{r}
+
+## Confusion matrix as actual matrix
+
+
+## Recall
+
+recall=tibble(WK=NA,
+           WU=NA,
+           WD=NA,
+           ST=NA,
+           SD=NA,
+           LD=NA)
+
+n=nrow(t2)-1
+c=ncol(t2)-1
+
+acc=0
+sum=0
+for(i in 1:n){
+    for(j in 1:c){
+        if(i==j){
+            acc=t2[i,j]
+        }
+    }
+    sum=t2[i,7]
+    recall[i]=acc/sum
+}
+print(recall)
+```
+
+```{r}
+
+## Precision
+
+precision=tibble(WK=NA,
+           WU=NA,
+           WD=NA,
+           ST=NA,
+           SD=NA,
+           LD=NA)
+
+n=nrow(t2)-1
+c=ncol(t2)-1
+acc=0
+sum=0
+for(j in 1:c){
+    for(i in 1:n){
+        if(i==j){
+            acc=t2[i,j]
+        }
+    }
+    sum=t2[7,j]
+    precision[j]=acc/sum
+}
+print(precision)
+
+```
+
+```{r}
+
+## Accuracy
+
+temp=tibble(WK=NA,
+           WU=NA,
+           WD=NA,
+           ST=NA,
+           SD=NA,
+           LD=NA)
+
+for(i in 1:n){
+    for(j in 1:c){
+        if(i==j){
+            acc=t2[i,j]
+        }
+    }
+    temp[i]=acc
+}
+temp=sum(temp)
+total=t2[7,7]
+accuracy=temp/total
+accuracy
+```
+
+
+:::
+
+
+# Problem 3 (17 pts): S\&P 500
+
+The S\&P 500 stock index measures the stock performance of 500 large companies listed on stock exchanges in the United States. The data [SP500.csv](https://mdporter.github.io/DS6030/data/SP500.csv) contain the daily percentage returns between Feb 2016 and March 2021. Use the predictors `lag1` through `lag5` (`lagX` is percentage return X days in the past) to predict the `direction` of the index (`up` or `down`). 
+
+This problem will explore a variety of re-sampling methods to evaluate the tuning parameter $\lambda$ in Lasso Logistic Regression. 
+
+
+::: {.solution}
+
+```{r}
+set.seed(2021)
+## Load and subset data
+
+df3.train=read_csv("SP500.csv")
+df3.train$y=ifelse(df3.train$direction=="up",1,0)
+df3.train=select(df3.train,lag1,lag2,lag3,lag4,lag5,y)
+df3.train
+
+## Holdout set 25% of training data
+
+n.train=length(df3.train$y)
+h=sample(1:n.train,(.25*n.train))
+df.holdout=df3.train[h,]
+df3.train=slice(df3.train,-h)
+
+## Generate misclassification function
+
+gen_mis=function(input){
+  results=matrix(NA,nrow=length(input),ncol=1)
+  
+    for(i in 1:length(input)){
+      p.hat = predict(fit.log, test.x, s=input[i], type="response")
+      G.hat=ifelse(p.hat >= .50,1,0)
+      G.test=df3.test$y
+      
+      t1=tibble(predicted=G.hat, truth = G.test)
+      t1$mis=ifelse(G.hat!=G.test,1,0)
+      n=nrow(t1)
+      mis=sum(t1$mis)
+      result=mis/n
+      results[i]=result
+    }
+    return(results)
+}
+```
+
+
+:::
+
+
+## a. 60-fold cross-validation 
+
+Use 60-fold cross-validation to assess performance.
+
+i. Produce a plot of *binomial deviance* as a function of $\lambda$. 
+    - Note: *binomial deviance* is the default loss when `family = "binomial"`. 
+ii. Produce a plot of *mis-classification rate* as a function of $\lambda$. Use a threshold of $\hat{p} = 1/2$. 
+iii. Report the $\lambda$ values that minimize the metrics. 
+
+
+::: {.solution}
+
+```{r}
+
+#### Binomial deviance plot as a function of lambda cv.model$cvm
+
+## Matrix setup
+
+X=glmnet::makeX(select(df3.train,-y), select(df.holdout, -y))
+train.x=X$x
+train.y=df3.train$y # Input for function???
+test.x=X$xtest
+
+## Logistic cross validation model setup
+
+alpha=1 # Lasso penalty
+V=60
+folds=rep(1:V, length=nrow(train.x)) %>% sample()
+
+fit.log=cv.glmnet(train.x, train.y, alpha=alpha, foldid=folds, family="binomial")
+log(fit.log$lambda.min)
+## Plot binomial deviance for training data models
+
+plot(fit.log)
+#fit.log$lambda.min
+```
+```{r}
+
+## Lambda sequence
+
+lambda=c(0,fit.log$lambda.1se, fit.log$lambda.min,fit.log$lambda)
+results=matrix(NA,nrow=length(lambda),ncol=1)
+
+## Misclassification rate across lambdas
+
+for(i in 1:length(lambda)){
+  p.hat = predict(fit.log, test.x, s=lambda[i], type="response")
+  G.hat=ifelse(p.hat >= .50,1,0)
+  G.test=df.holdout$y
+  
+  t1=tibble(predicted=G.hat, truth = G.test)
+  t1$mis=ifelse(G.hat!=G.test,1,0)
+  n=nrow(t1)
+  mis=sum(t1$mis)
+  result=mis/n
+  results[i]=result
+}
+results=tibble(results) %>% cbind( lambda)
+results
+plot(results$lambda,results$results)
+```
+```{r}
+
+## Report lambda with minumum misclassification rate
+
+print(results$lambda[results$results==min(results$results)])
+#mean(results$results) # min(misclassification)
+
+```
+
+
+:::
+
+
+## b. 10-fold cross-validation repeated 6 times
+
+Repeat 10-fold cross-validation 6 times to assess performance.
+
+i. Produce a plot of *binomial deviance* as a function of $\lambda$. 
+    - Note: *binomial deviance* is the default loss when `family = "binomial"`. 
+ii. Produce a plot of *mis-classification rate* as a function of $\lambda$. Use a threshold of $\hat{p} = 1/2$. 
+iii. Report the $\lambda$ values that minimize the metrics. 
+
+
+::: {.solution}
+
+```{r}
+set.seed(2021)
+#### Binomial deviance plot as a function of lambda cv.model$cvm
+
+## Logistic cross validation model setup
+
+M=6 # number of iterations
+alpha=1 # Lasso penalty
+V=10
+results=tibble(lambda=NA,
+               cvm=NA,
+               M=NA,
+               miss=NA)
+
+for(i in 1:M){
+  folds=rep(1:V, length=nrow(train.x)) %>% sample()
+  fit.log=cv.glmnet(train.x, train.y, alpha=alpha, foldid=folds, family="binomial")
+  result=tibble(lambda=fit.log$lambda,
+                cvm=fit.log$cvm)
+  print(lambda)
+  print(length(fit.log$lambda))
+  lambda=fit.log$lambda
+  
+  ## Misclassification rate across lambdas for each M
+  temp=matrix(NA,nrow=length(lambda),ncol=1)
+  for(j in 1:length(lambda)){
+    p.hat = predict(fit.log, test.x, s=lambda[j], type="response")
+    G.hat=ifelse(p.hat >= .50,1,0)
+    G.test=df.holdout$y
+    
+    t1=tibble(predicted=G.hat, truth = G.test)
+    t1$mis=ifelse(G.hat!=G.test,1,0)
+    n=nrow(t1)
+    mis=sum(t1$mis)
+    answer=mis/n
+    temp[j]=answer
+  }
+  result$miss=temp
+  result$M=i
+  results=rbind(results,result)
+}
+
+results=results[-1,]
+
+## Plot
+
+results %>%
+  ggplot(aes(lambda, cvm, group=M, color=M)) + geom_line()
+```
+
+```{r}
+
+## Plot misclassification
+
+results %>%
+  ggplot(aes(lambda, miss, group=M, color=M)) + geom_line()
+
+```
+
+
+```{r}
+
+## Report minimum lambdas
+
+by_M = results %>% group_by(M) %>% summarize(
+  min_deviance = min(cvm),
+  min_miss=min(miss),
+  min_dev_lambda = lambda[cvm==min(cvm)],
+  min_miss_lambda = lambda[miss==min(miss)]
+)
+
+
+print(by_M)
+mean(results$cvm)
+```
+
+
+:::
+
+
+## c. 5-fold cross-validation repeated 12 times
+
+Repeat 5-fold cross-validation 12 times to assess performance.
+
+i. Produce a plot of *binomial deviance* as a function of $\lambda$. 
+    - Note: *binomial deviance* is the default loss when `family = "binomial"`. 
+ii. Produce a plot of *mis-classification rate* as a function of $\lambda$. Use a threshold of $\hat{p} = 1/2$. 
+iii. Report the $\lambda$ values that minimize the metrics. 
+
+::: {.solution}
+
+```{r}
+set.seed(2021)
+## Same thing but change M and V
+
+#### Binomial deviance plot as a function of lambda cv.model$cvm
+
+## Logistic cross validation model setup
+
+M=12 # number of iterations
+alpha=1 # Lasso penalty
+V=5
+results=tibble(lambda=NA,
+               cvm=NA,
+               M=NA,
+               miss=NA)
+for(i in 1:M){
+  folds=rep(1:V, length=nrow(train.x)) %>% sample()
+  fit.log=cv.glmnet(train.x, train.y, alpha=alpha, foldid=folds, family="binomial")
+  result=tibble(lambda=fit.log$lambda,
+                cvm=fit.log$cvm)
+  lambda=fit.log$lambda
+  
+  ## Misclassification rate across lambdas for each M
+  temp=matrix(NA,nrow=length(lambda),ncol=1)
+  for(j in 1:length(lambda)){
+    p.hat = predict(fit.log, test.x, s=lambda[j], type="response")
+    G.hat=ifelse(p.hat >= .50,1,0)
+    G.test=df.holdout$y
+    
+    t1=tibble(predicted=G.hat, truth = G.test)
+    t1$mis=ifelse(G.hat!=G.test,1,0)
+    n=nrow(t1)
+    mis=sum(t1$mis)
+    answer=mis/n
+    temp[j]=answer
+  }
+  result$M=i
+  result$miss=temp
+  results=rbind(results,result)
+}
+
+results=results[-1,]
+
+## Plot
+
+results %>%
+  ggplot(aes(lambda, cvm, group=M, color=M)) + geom_line()
+
+
+```
+
+```{r}
+
+## Plot misclassification
+
+results %>%
+  ggplot(aes(lambda, miss, group=M, color=M)) + geom_line()
+
+
+```
+
+```{r}
+
+## Report minimum lambdas
+
+by_M = results %>% group_by(M) %>% summarize(
+  min_deviance = min(cvm),
+  min_miss = min(miss),
+  min_miss_lambda = lambda[miss==min(miss)],
+  min_dev_lambda = lambda[cvm==min(cvm)]
+)
+
+mean(results$cvm)
+print(by_M)
+
+
+```
+
+:::
+
+
+## d. 3-fold cross-validation repeated 20 times
+
+Repeat 3-fold cross-validation 20 times to assess performance.
+
+i. Produce a plot of *binomial deviance* as a function of $\lambda$. 
+    - Note: *binomial deviance* is the default loss when `family = "binomial"`. 
+ii. Produce a plot of *mis-classification rate* as a function of $\lambda$. Use a threshold of $\hat{p} = 1/2$. 
+iii. Report the $\lambda$ values that minimize the metrics. 
+
+::: {.solution}
+
+```{r}
+set.seed(2021)
+## Same thing but change M and V
+
+#### Binomial deviance plot as a function of lambda cv.model$cvm
+
+## Logistic cross validation model setup
+
+M=20 # number of iterations
+alpha=1 # Lasso penalty
+V=3
+results=tibble(lambda=NA,
+               cvm=NA,
+               M=NA,
+               miss=NA)
+for(i in 1:M){
+  folds=rep(1:V, length=nrow(train.x)) %>% sample()
+  fit.log=cv.glmnet(train.x, train.y, alpha=alpha, foldid=folds, family="binomial")
+  result=tibble(lambda=fit.log$lambda,
+                cvm=fit.log$cvm)
+  lambda=fit.log$lambda
+  
+  ## Misclassification rate across lambdas for each M
+  temp=matrix(NA,nrow=length(lambda),ncol=1)
+  for(j in 1:length(lambda)){
+    p.hat = predict(fit.log, test.x, s=lambda[j], type="response")
+    G.hat=ifelse(p.hat >= .50,1,0)
+    G.test=df.holdout$y
+    
+    t1=tibble(predicted=G.hat, truth = G.test)
+    t1$mis=ifelse(G.hat!=G.test,1,0)
+    n=nrow(t1)
+    mis=sum(t1$mis)
+    answer=mis/n
+    temp[j]=answer
+  }
+  result$miss=temp
+  result$M=i
+  results=rbind(results,result)
+}
+
+results=results[-1,]
+
+## Plot
+
+results %>%
+  ggplot(aes(lambda, cvm, group=M, color=M)) + geom_smooth(se=FALSE)
+
+```
+
+```{r}
+
+## Plot misclassification
+
+results %>%
+  ggplot(aes(lambda, miss, group=M, color=M)) + geom_line()
+
+
+```
+
+
+```{r}
+
+## Report minimum lambdas
+
+by_M = results %>% group_by(M) %>% summarize(
+  min_deviance = min(cvm),
+  min_miss = min(miss),
+  min_miss_lambda = lambda[miss==min(miss)],
+  min_dev_lambda = lambda[cvm==min(cvm)]
+)
+
+print(by_M)
+mean(results$cvm)
+
+```
+
+
+:::
+
+
+## e. Monte Carlo cross-validation (i.e., repeated hold-outs) Repeated 60 times. 
+
+Repeat Monte Carlo cross-validation (repeated hold-outs) 60 times to assess performance. Hold-out 1/10 of the data.
+
+i. Produce a plot of *binomial deviance* as a function of $\lambda$. 
+    - Note: *binomial deviance* is the default loss when `family = "binomial"`. 
+ii. Produce a plot of *mis-classification rate* as a function of $\lambda$. Use a threshold of $\hat{p} = 1/2$. 
+iii. Report the $\lambda$ values that minimize the metrics.
+iv. **Compare this approach with the 10-fold cross-validation used part b. How are they different? How are they similar?**
+
+Note: the function `assess.glmnet()` from the `glmnet` package will provide the *deviance* and *class* metrics. 
+
+::: {.solution}
+
+This approach is similar to 10-fold cross validation in that it repeatedly tests on 10% of the dataset. However, the first major difference from a generic standpoint is that the Monte Carlo 10% dataset can pull from the same data points across simulations, whereas the 10-fold CV approach cannot. The second difference between approaches (based on how I set up the problem) is that this Monte Carlo approach is pulling from the entire dataset, whereas I restricted the 10-fold CV approach to choosing folds within 75% of the overall dataset (25% of the data was isolated as a holdout test set to facilitate using CV.GLMNET).
+
+```{r}
+set.seed(2021)
+## In M=60 loop, take 9/10 of observations across whole training set and test on 1/10.
+
+## Setup
+
+df3=read_csv("SP500.csv")
+df3$y=ifelse(df3$direction=="up",1,0)
+df3=select(df3,lag1,lag2,lag3,lag4,lag5,y)
+df3
+M=60
+alpha=1 # Still lasso
+
+## Holdout set 10% of training data
+
+results=tibble(lambda=NA,
+               binomial_deviance=NA,
+               miss=NA,
+               M=NA)
+for(i in 1:M){
+  n=length(df3$y)
+  h=sample(1:n,(.1*n)) # test data
+  df3.test=df3[h,]
+  df3.train=slice(df3,-h)
+  
+  ## Fit the model
+  
+  X=glmnet::makeX(select(df3.train,-y), select(df3.test, -y))
+  train.x=X$x
+  train.y=df3.train$y # Input for function???
+  test.x=X$xtest
+  
+  fit.log=glmnet(train.x, train.y, alpha=alpha, family="binomial")
+  assess=assess.glmnet(fit.log, newx=test.x, newy=df3.test$y)
+  lambdas=fit.log$lambda
+  deviance=assess$deviance
+  miss=gen_mis(lambdas)
+
+  ## Capture
+  
+  result=tibble(lambda=lambdas,
+               binomial_deviance=deviance)
+  result$M=i
+  result$miss=miss
+  results=rbind(results,result)
+}
+
+results=results[-1,]
+
+## Plot binomial deviance
+
+results %>%
+  ggplot(aes(lambda, binomial_deviance, group=M, color=M)) + geom_smooth(se=FALSE)
+
+
+#### ORIGINAL LOCATION FOR gen_mis FUNCTION ####
+
+```
+
+```{r}
+
+## Plot misclassification
+
+results %>%
+  ggplot(aes(lambda, miss, group=M, color=M)) + geom_smooth(se=FALSE)
+
+```
+
+```{r}
+
+## Report minimum lambdas
+
+by_M = results %>% group_by(M) %>% summarize(
+  min_miss = min(miss),
+  min_deviance = min(binomial_deviance),
+  lambda = lambda[(miss==min(miss) & binomial_deviance==min(binomial_deviance))]
+)
+
+mean(results$binomial_deviance)
+print(by_M)
+```
+
+:::
+
+
+## f. Out-of-Bag repeated 60 times. 
+
+Repeat the bootstrapped-based out-of-bag validation 60 times. 
+
+i. Produce a plot of *binomial deviance* as a function of $\lambda$. 
+    - Note: *binomial deviance* is the default loss when `family = "binomial"`. 
+ii. Produce a plot of *mis-classification rate* as a function of $\lambda$. Use a threshold of $\hat{p} = 1/2$. 
+iii. Report the $\lambda$ values that minimize the metrics.
+iv. **Compare this approach with the 3-fold cross-validation used part d. How are they different? How are they similar?**
+
+Note: the function `assess.glmnet()` from the `glmnet` package will provide the *deviance* and *class* metrics. 
+
+::: {.solution}
+
+Out-of-Bag bootstrapping is similar to 3-fold CV because on average about 37% of the data gets used for testing the data, which is similar in size to the testing sizes across folds. However, this approach is different in that it samples with replacement across the entire dataset, whereas 3-fold CV does not -- each point is only tested upon once.
+
+```{r}
+set.seed(2021)
+## Setup
+
+df3=read_csv("SP500.csv")
+df3$y=ifelse(df3$direction=="up",1,0)
+df3=select(df3,lag1,lag2,lag3,lag4,lag5,y)
+df3
+M=60
+n=nrow(df3)
+
+
+results=tibble(lambda=NA,
+               binomial_deviance=NA,
+               miss=NA,
+               M=NA)
+for(i in 1:M){
+  
+  ## For iteration, set up bootstrap
+  
+  boot=sample(n, size=n, replace=TRUE) # bootstrap indices
+  oob = setdiff(1:n, boot) # oob indices
+  df3.test=df3[oob,]
+  df3.train=df3[boot,]
+  
+  ## Fit the model
+  
+  X=glmnet::makeX(select(df3.train,-y), select(df3.test, -y))
+  train.x=X$x
+  train.y=df3.train$y # Input for function???
+  test.x=X$xtest
+  
+  fit.log=glmnet(train.x, train.y, alpha=alpha, family="binomial")
+  assess=assess.glmnet(fit.log, newx=test.x, newy=df3.test$y)
+  lambdas=fit.log$lambda
+  deviance=assess$deviance
+  miss=gen_mis(lambdas)
+
+  ## Capture
+  
+  result=tibble(lambda=lambdas,
+               binomial_deviance=deviance)
+  result$M=i
+  result$miss=miss
+  results=rbind(results,result)
+}
+
+results=results[-1,]
+
+
+## Plot binomial deviance
+
+results %>%
+  ggplot(aes(lambda, binomial_deviance, group=M, color=M)) + geom_line()
+
+
+
+## Loop
+
+
+
+```
+```{r}
+## Plot misclassification
+
+results %>%
+  ggplot(aes(lambda, miss, group=M, color=M)) + geom_smooth(se=FALSE)
+```
+
+```{r}
+## Report minimum lambdas
+
+by_M = results %>% group_by(M) %>% summarize(
+  min_miss = min(miss),
+  min_deviance = min(binomial_deviance),
+  lambda = lambda[(miss==min(miss) & binomial_deviance==min(binomial_deviance))]
+)
+
+mean(results$binomial_deviance)
+print(by_M)
+```
+
+:::
+
+
+## g. Conclusions
+
+- How many models were fit under each approach?
+
+
+
+- Compare the approaches. Which one do you like best for this problem? 
+
+
+
+- Which value of $\lambda$ would you choose to minimize deviance? Mis-classification?
+
+
+
+::: {.solution}
+
+a. There were 60 training models fit under each approach, through various combinations of folds and simulations.
+
+b. The cross validation approaches are similar in that they fit models by dividing the training data into V folds, with the Vth fold serving as a test set. This produces V models, multiplied by the number of simulations conducted. I tested these models against a 25% randomized holdout set taken from the original data set.
+
+The Monte Carlo approach repeatedly fit (M=60) models on 90% of the full dataset, randomly allocating 10% of the data as a test set for each model. This is different from the cross validation approaches because it can choose the same training or test data points across data allocations/fittings. 
+
+The Out-of-the-Bag approach samples across the entire dataframe with replacement, retaining all non-selected values as the test set values. This means that each test set can have a different set of values, as well as a different dimension. 
+
+Among these methods, I preferred the cross validation approaches, particularly with higher numbers of simulations (e.g. M=20, CV where V=3). This method had the lowest average misclassification rate (~43%), had a lower spread of minimum and maxium misclassification rates between simulations, and showed enough simulations to gauge a reliable lambda to minimize binomial deviance.
+
+c. To minimize misclassification, I would choose lambda of 0.0017. This is the lambda value of the best performing model approach (M=20, CV V=3) that minimizes misclassification. To minimize binomial deviance, I would choose lambda 0.015. This is the lambda min of the best performing model approach (M=1, CV V=60) that minimizes binomial deviance.
+
+:::
+
+
+
+
