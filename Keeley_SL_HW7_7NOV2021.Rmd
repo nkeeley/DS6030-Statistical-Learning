@@ -1,0 +1,264 @@
+---
+title: "Homework #7: Trees and Forests" 
+author: "**Nick Keeley**"
+date: "Due: Tue Nov 9 | 3:25pm"
+output: R6030::homework
+editor_options:
+  chunk_output_type: console
+---
+
+**DS 6030 | Fall 2021 | University of Virginia**
+
+NOTE TO GRADER: I referenced the Random Forests class notes and ISLR code/readings for this week to complete this assignment. I also referenced https://www.datanovia.com/en/blog/ggplot-legend-title-position-and-labels/ for ggplot issues.
+
+------------------------------------------------------------------------
+
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+# options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+
+
+# Required R packages and Directories
+
+::: {.solution}
+```{r packages, message=FALSE, warning=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data/' # data directory
+library(R6030)     # functions for DS-6030
+library(tidyverse) # functions for data manipulation  
+library(randomForest)
+```
+:::
+
+# Problem 1: Tree Splitting for classification
+
+Consider the Gini index, classification error, and entropy impurity measures in a simple classification setting with two classes. 
+
+Create a single plot that displays each of these quantities as a function of $p_m$, the estimated probability of an observation in node $m$ being from class 1. The x-axis should display $p_m$, ranging from 0 to 1, and the y-axis should display the value of the Gini index, classification error, and entropy.
+
+::: {.solution}
+
+```{r}
+
+## Data generation -- none provided, so assumed normal distribution
+
+set.seed(2021)
+df=tibble(prob_p1=runif(100,0,1))
+df["prob_p2"]=1-df["prob_p1"]
+#hist(df$prob_p2)
+```
+```{r}
+
+## Misclassification scores -- find the max prob of two classes, assign
+
+n=nrow(df)
+mis_error=numeric(n)
+for(i in 1:n){
+  max = max(df$prob_p1[i], df$prob_p2[i])
+  mis_error[i] = 1-max
+}
+df["miss_error"]=mis_error
+plot(df$prob_p1, df$miss_error)
+```
+```{r}
+
+## Gini Coefficient -- sum of variances
+
+df["gini1"]=df$prob_p1*(1-df$prob_p1)
+plot(df$prob_p1, df$gini1)
+```
+
+```{r}
+
+## Entropy impurity 
+
+df["entropy"]=df$prob_p1*log(1/df$prob_p1)
+plot(df$prob_p1, df$entropy)
+```
+```{r}
+
+df %>%
+  ggplot(aes(prob_p1)) + geom_line(aes(y=mis_error, color="blue")) +
+  geom_line(aes(y=entropy, color="green")) + 
+  geom_line(aes(y=gini1, color="red")) + theme(legend.position="none")
+
+
+```
+
+:::
+
+
+# Problem 2: Combining bootstrap estimates
+
+```{r, echo=FALSE}
+p_red = c(0.2, 0.25, 0.3, 0.4, 0.4, 0.45, 0.7, 0.85, 0.9, 0.9)
+```
+
+Suppose we produce ten bootstrapped samples from a data set containing red and green classes. We then apply a classification tree to each bootstrapped sample and, for a specific value of $X$, produce the following 10 estimates of $\Pr(\text{Class is Red} \mid X)$: $\{`r stringr::str_c(p_red, sep=", ")`\}$.
+
+## a. ISLR 8.2 describes the *majority vote* approach for making a hard classification from a set of bagged classifiers. What is the final classification for this example using majority voting?
+
+::: {.solution}
+
+A majority vote approach chooses the class with the highest number of class attributions given a set of predictions. So, in the example provided, the final classification given the ten estimates is "Green," since 6/10 probabilities are less than 51% for Pr(Class is Red | X).
+
+:::
+
+## b. An alternative is to base the final classification on the average probability. What is the final classification for this example using average probability?
+
+::: {.solution}
+
+This is a classification method referred to as "bagging." The final classification for this approach would be "Red" since the average probability of the bootstrap estimates is 53.5%.
+
+```{r}
+
+x=c(0.2, .25, .3, .4, .4, .45, .7, .85, .9, .9)
+mean(x)
+
+```
+
+
+:::
+
+
+## c. Suppose the cost of mis-classifying a Red observation (as Green) is twice as costly as mis-classifying a Green observation (as Red). How would you modify both approaches to make better final classifications under these unequal costs? Report the final classifications. 
+
+::: {.solution}
+
+For the majority vote approach, I would account for the adjusted misclassification cost by setting a new "majority" threshold. Thus, >66% of Pr(Class is Red | X) estimates would need to be above 50% in order to yield a majority vote of "Red." Applying this new threshold, the adjusted majority vote classification would be "Red."
+
+For the bagging approach, I would account for misclassification cost by multiplying all "Green" probability estimates by 2. This would increase the average estimate, airing on the side of conservativism when predicting class != Red. This adjustment leads to an adjusted bagging classification of "Red."
+
+```{r}
+
+x=c(0.4, .5, .6, .8, .8, .9, .7, .85, .9, .9)
+mean(x)
+
+```
+
+:::
+
+
+# Problem 3: Random Forest Tuning
+
+Random forest has several tuning parameters that you will explore in this problem. We will use the `Boston` housing data from the `MASS` R package (See the ISLR Lab in section 8.3.3 for example code).
+
+- Note: remember that `MASS` can mask the `dplyr::select()` function.
+
+## a. List all of the random forest tuning parameters in the `randomForest::randomForest()` function. Note any tuning parameters that are specific to classification or regression problems. Indicate the tuning parameters you think will be most important to optimize? 
+
+::: {.solution}
+
+The tuning parameters for random forests are 1) the number of predictors to be evaluated for each split; 2) the depth of the tree determined by the minimum number of observations in each leaf node; and 3) the number of trees in the forest (number of bootstrap samples). I think the second parameter will be the most important, since we always want to maximize the number of trees in the random forest, and this parameter will have the most significant impact on bias-variance tradeoff with larger datasets.
+
+:::
+
+
+## b. Use a random forest model to predict `medv`, the median value of owner-occupied homes (in $1000s). Use the default parameters and report the 10-fold cross-validation MSE. 
+
+::: {.solution}
+
+The 10-fold cross-validation MSE is 11.08 for this random forest model is.
+
+```{r}
+set.seed(2021)
+library(MASS)
+df2=Boston
+
+## Folds for cross validation
+
+V=10
+folds=rep(1:V, length=nrow(df2)) %>% sample()
+size=nrow(df2)-(nrow(df2)/10)
+df2["fold"]=folds
+
+
+## Cross validation 
+
+results=tibble(fold=NA,
+               MSE=NA)
+for(i in 1:V){
+  temp_train=df2[(df2["fold"]!=i),]
+  temp_test= df2[(df2["fold"]==i),]
+  X=glmnet::makeX(dplyr::select(temp_train,-medv,-fold), dplyr::select(temp_test, -medv,-fold))
+  train.x=X$x
+  train.y=temp_train$medv 
+  test.x=X$xtest
+  test.y=temp_test$medv
+  bag = randomForest(x=train.x, y=train.y, xtest=test.x,ytest=test.y,keep.inbag = TRUE)
+  result=tibble(fold=i,
+                MSE=mean(bag$mse))
+  results=rbind(results,result)
+}
+results=results[2:11,]
+answer=mean(results$MSE)
+print(answer)
+```
+
+
+:::
+
+
+## c. Now we will vary the tuning parameters of `mtry` and `ntree` to see what effect they have on performance. 
+- Use a range of reasonable `mtry` and `ntree` values.
+- Use 5 times repeated out-of-bag (OOB) to assess performance. That is, run random forest 5 times for each tuning set, calculate the OOB MSE each time and use the average for the MSE associated with the tuning parameters.
+- Use a plot to show the average MSE as a function of `mtry` and `ntree`.
+- Report the best tuning parameter combination. 
+- Note: random forest is a stochastic model; it will be different every time it runs. Set the random seed to control the uncertainty associated with the stochasticity. 
+- Hint: If you use the `randomForest` package, the `mse` element in the output is a vector of OOB MSE values for `1:ntree` trees in the forest. This means that you can set `ntree` to some maximum value and get the MSE for any number of trees up to `ntree`. 
+
+::: {.solution}
+
+```{r}
+## Inputs
+
+set.seed(2021)
+df2=Boston
+p=ncol(df2)-1 # Number of predictors
+max_trees = nrow(df2)
+M=5
+tree_list=c(200, 250, 300, 350, 400, 450, max_trees)
+list_len=length(tree_list)
+
+results2=tibble(mtry=NA,
+                ntree=NA,
+                MSE=NA)
+
+for(i in 1:p){
+  for(j in 1:list_len){
+    temp=numeric(M)
+    z=tree_list[j]
+    for(k in 1:M){
+        bag = randomForest(formula=medv~., data=df2, ntree=z, mtry=i)
+        temp[k]=mean(bag$mse)
+    }
+    result=tibble(mtry=i,
+                  ntree=z,
+                  MSE=mean(temp))
+    results2=rbind(results2,result)
+  }
+}
+results2=results2[2:nrow(results2),]
+
+```
+
+```{r}
+## Plot
+
+results2 %>%
+  ggplot(aes(x=mtry, y=MSE, color=ntree)) + geom_point()
+
+```
+
+
+```{r}
+
+## Report
+
+answer=results2[(results2$MSE==min(results2$MSE)),]
+paste("The lowest mtry/ntree combination is",answer[1], "and", answer[2], "respectively.")
+```
+
+
+:::
