@@ -2,13 +2,19 @@
 
 Language types: R
 
-Note: each .Rmd file has an associated HTML file with the same name.
+This repository contains exams and assignments primarily involving hyperparameter tuning of statistical models. Additional topics include KNN models, model-based clustering/Kernel Density Estimation, association analysis, and validation techniques (e.g. OOB, k-fold, etc.). Note: each .Rmd file has an associated HTML file with a similar name.
+
+## Keeley_SL_Exam 1_4OCT2021.Rmd
+
+- HTML version: file:///Users/nkeeley/Dropbox/SY_Q1/Statistical%20Learning/Keeley_SL_Exam-1_4OCT2021.html
+
+- Description: Evaluated KNN model classification accuracy through confusion matrix, one vs. rest penalized logistic regression approach for multi-class classification, different repetitions x different k-fold validation comparison, Monte Carlo validation, and OOB validation (Note: links to datasets included in file).
 
 ## Keeley_exam-2_11DEC2021.Rmd
 
-- HTML version: https://collab.its.virginia.edu/access/content/attachment/15673e61-84dc-4acc-ae45-4a9f86b9a4b9/Assignments/88c009fa-0298-4acb-897a-523a3deaaced/Keeley_exam-2_11DEC2021.html
+- HTML version: file:///Users/nkeeley/Dropbox/SY_Q1/Statistical%20Learning/Keeley_exam-2_11DEC2021.html
 
-- Description: This exam 
+- Description: Association analysis of superhero dataset, unsupervised clustering techniques with different distance measures and linkages, multivariate mixture model density estimation (with 3D visualization), and graph node clustering using optimized K.
 
 ## Keeley_SL_Assignment 1_3SEP2021.Rmd
 
@@ -18,7 +24,7 @@ Note: each .Rmd file has an associated HTML file with the same name.
 
 ## Keeley_SL_Assignment 2_11SEP2021.Rmd 
 
--HTML version: file:///Users/nkeeley/Dropbox/SY_Q1/Statistical%20Learning/Keeley_SL_Assignment-2_11SEP2021.html
+- HTML version: file:///Users/nkeeley/Dropbox/SY_Q1/Statistical%20Learning/Keeley_SL_Assignment-2_11SEP2021.html
 
 - Description: Created bootstrapped data sets, conducted k-fold cross validation *manually*, hyperparameter tuning for (supervised) kNN model to reduce MSE, and differentiated between training and test MSE for a classification problem.
 
@@ -48,8 +54,14 @@ Note: each .Rmd file has an associated HTML file with the same name.
 
 ## Keeley_SL_HW7_7NOV2021.Rmd
 
--HTML version: file:///Users/nkeeley/Dropbox/SY_Q1/Statistical%20Learning/Keeley_SL_HW7_7NOV2021.html
+- HTML version: file:///Users/nkeeley/Dropbox/SY_Q1/Statistical%20Learning/Keeley_SL_HW7_7NOV2021.html
 
 - Description: Bagging/majority-vote classification approaches, classification threshold cost adjustments, repeated OOB sampling to assess Random Forest tuning parameter influence on MSE.
 
-## 
+## Keeley_SL_HW9_23NOV2021
+
+- HTML version: file:///Users/nkeeley/Dropbox/SY_Q1/Statistical%20Learning/Keeley_SL_HW9_23NOV2021.html
+
+- Description: Association analysis, "interestingness" (e.g. lift, confidence, etc.), and transactions using the arules package.
+
+
