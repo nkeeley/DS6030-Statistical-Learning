@@ -4,7 +4,6 @@ Language types: R
 
 Note: each .Rmd file has an associated HTML file with the same name.
 
-
 ## Keeley_exam-2_11DEC2021.Rmd
 
 - HTML version: https://collab.its.virginia.edu/access/content/attachment/15673e61-84dc-4acc-ae45-4a9f86b9a4b9/Assignments/88c009fa-0298-4acb-897a-523a3deaaced/Keeley_exam-2_11DEC2021.html
@@ -47,4 +46,10 @@ Note: each .Rmd file has an associated HTML file with the same name.
 
 - Description: Conducted model-based clustering (gaussian mixture model) via the Mclust package, hierarchical clustering, and k-means clustering.
 
+## Keeley_SL_HW7_7NOV2021.Rmd
 
+-HTML version: file:///Users/nkeeley/Dropbox/SY_Q1/Statistical%20Learning/Keeley_SL_HW7_7NOV2021.html
+
+- Description: Bagging/majority-vote classification approaches, classification threshold cost adjustments, repeated OOB sampling to assess Random Forest tuning parameter influence on MSE.
+
+## 
